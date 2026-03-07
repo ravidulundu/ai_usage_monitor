@@ -1,5 +1,13 @@
 /* AI Usage Monitor Styles */
 
+.ai-usage-content-box {
+    padding: 8px 10px 10px 10px;
+}
+
+.ai-usage-switcher-box {
+    padding: 0 10px 6px 10px;
+}
+
 .ai-usage-panel-label {
     font-size: 11px;
     font-weight: bold;
@@ -7,20 +15,113 @@
 }
 
 .ai-usage-menu-header {
-    padding: 10px;
+    padding: 10px 12px 8px 12px;
 }
 
-.ai-usage-tool-section {
-    padding: 8px 0;
+.ai-usage-switcher-button {
+    margin-right: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.ai-usage-switcher-button.active {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.ai-usage-provider-card {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-usage-provider-card.compact {
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border-radius: 14px;
+}
+
+.ai-usage-provider-header {
+    margin-bottom: 8px;
+}
+
+.ai-usage-provider-icon {
+    margin-right: 6px;
+}
+
+.ai-usage-provider-badge {
+    min-width: 22px;
+    min-height: 22px;
+    padding: 2px 0;
+    margin-right: 6px;
+    border-radius: 999px;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.ai-usage-provider-title {
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.ai-usage-provider-subtitle {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
 }
 
 .ai-usage-error {
-    color: #ef4444;
+    color: #ff7b7b;
     font-size: 10px;
 }
 
+.ai-usage-muted-row {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 10px;
+    margin-bottom: 4px;
+}
+
 .ai-usage-bar-container {
-    margin: 3px 0;
+    margin: 4px 0;
+}
+
+.ai-usage-bar-container.compact {
+    margin: 2px 0;
+}
+
+.ai-usage-bar-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    min-width: 54px;
+}
+
+.ai-usage-bar-label.compact {
+    min-width: 42px;
+}
+
+.ai-usage-bar-value {
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 38px;
+}
+
+.ai-usage-bar-value.compact {
+    font-size: 10px;
+    min-width: 34px;
+}
+
+.ai-usage-bar-reset {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    min-width: 66px;
+}
+
+.ai-usage-bar-reset.compact {
+    min-width: 58px;
 }
 
 .ai-usage-panel-tool-icon {

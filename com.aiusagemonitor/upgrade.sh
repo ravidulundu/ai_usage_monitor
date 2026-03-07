@@ -15,7 +15,14 @@ if [ $? -eq 0 ]; then
     echo "✓ Widget upgraded successfully"
     echo ""
     echo "Restarting Plasma Shell to apply changes..."
-    kquitapp6 plasmashell && kstart plasmashell &
+    kquitapp6 plasmashell || true
+    if command -v kstart6 >/dev/null 2>&1; then
+        kstart6 plasmashell &
+    elif command -v kstart >/dev/null 2>&1; then
+        kstart plasmashell &
+    else
+        nohup plasmashell --replace >/tmp/aiusagemonitor-plasmashell.log 2>&1 &
+    fi
     echo "✓ Plasma Shell restarted"
     echo ""
     echo "The widget should now show the updated version."

@@ -14,10 +14,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Build staged plasmoid bundle
+        run: |
+          rm -rf /tmp/ai-usage-monitor-release
+          cp -r com.aiusagemonitor /tmp/ai-usage-monitor-release
+          mkdir -p /tmp/ai-usage-monitor-release/contents/vendor
+          cp -r core /tmp/ai-usage-monitor-release/contents/vendor/core
+          find /tmp/ai-usage-monitor-release -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find /tmp/ai-usage-monitor-release -type f -name '*.pyc' -delete
+          rm -f /tmp/ai-usage-monitor-release/install.sh /tmp/ai-usage-monitor-release/upgrade.sh
+
+      - name: Smoke test bundled backend
+        run: |
+          python3 /tmp/ai-usage-monitor-release/contents/scripts/fetch_all_usage.py state > /tmp/ai-usage-state.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/ai-usage-state.json").read_text())
+          assert "providers" in payload, payload
+          PY
+
       - name: Build plasmoid package
         run: |
-          cd com.aiusagemonitor
-          zip -r ../ai-usage-monitor.plasmoid . -x "*/__pycache__/*" "*.pyc" "./install.sh" "./upgrade.sh"
+          cd /tmp/ai-usage-monitor-release
+          zip -r "$GITHUB_WORKSPACE/ai-usage-monitor.plasmoid" . -x "*/__pycache__/*" "*.pyc"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
