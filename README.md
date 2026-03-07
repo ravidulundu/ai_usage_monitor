@@ -2,119 +2,292 @@
 
 [![KDE Store](https://img.shields.io/badge/KDE_Store-Available-1D99F3?style=for-the-badge&logo=kde&logoColor=white)](https://www.pling.com/p/2348728/)
 
-Cross-platform desktop widget/extension to monitor usage for:
+Linux desktop usage monitor for AI coding tools.
 
-- **Claude Code** - Track your 5-hour and 7-day usage limits
-- **OpenAI Codex** - Monitor your Codex API quotas
-- **Gemini CLI** - Keep track of Gemini model usage across all available models
+It ships as:
 
-Shows a compact panel indicator and a full popup with limits, usage percentages, and reset times.
+- a KDE Plasma widget
+- a GNOME Shell extension
+- a shared Python backend used by both UIs
+
+The project shows a compact panel indicator and a popup with usage windows, reset timers, auth errors, and provider-specific details.
+
+## Current Scope
+
+This repo uses a shared cross-desktop backend and a descriptor-driven provider registry. KDE and GNOME read the same normalized JSON state instead of maintaining separate provider logic.
+
+Only providers that currently have approved `@lobehub/icons` support are exposed in the product UI.
+
+## Supported Providers
+
+| Provider | Short Name | Source Modes | Notes |
+| --- | --- | --- | --- |
+| Amp | `Amp` | `web` | Cookie-based web usage parsing |
+| Claude Code | `Claude` | `auto` | OAuth/local usage + status |
+| OpenAI Codex | `Codex` | `auto` | Local session logs + rate limit windows |
+| Gemini CLI | `Gemini` | `auto` | Local Gemini auth/settings + model-aware windows |
+| GitHub Copilot | `Copilot` | `api` | GitHub API token |
+| Vertex AI | `Vertex` | `oauth` | Google ADC / OAuth |
+| OpenRouter | `OpenRouter` | `api` | API key |
+| Ollama | `Ollama` | `web` | Cookie-based web usage parsing |
+| OpenCode | `OpenCode` | `web` | Cookie-based web usage parsing |
+| z.ai | `z.ai` | `api` | API-based usage |
+| Kilo Code | `Kilo` | `auto`, `api`, `cli` | API or local auth file |
+| MiniMax | `MiniMax` | `auto`, `web`, `api` | API or cookie-based web usage |
+
+Currently hidden from the active UI surface:
+
+- `Kiro`
+- `JetBrains AI`
+- `Warp`
+- `Kimi K2`
+
+They are intentionally not surfaced in the shipped UI because the current rule is: if a provider does not have an allowed icon source in the chosen icon system, it is not exposed in the desktop product.
 
 ## Platform Support
 
-| Platform | Status | Version | Notes |
-|----------|--------|---------|-------|
-| ![KDE](https://img.shields.io/badge/KDE_Plasma-1D99F3?style=flat&logo=kde&logoColor=white) | ✅ **Working** | Plasma 6+ | Full support with KDE Frameworks 6 |
-| ![GNOME](https://img.shields.io/badge/GNOME-4A86CF?style=flat&logo=gnome&logoColor=white) | ✅ **Working** | GNOME 45+ | Full support for GNOME Shell 45, 46, 47 |
+| Platform | Status | Notes |
+| --- | --- | --- |
+| KDE Plasma 6+ | Working | Primary desktop target |
+| GNOME Shell 45+ | Working | Uses the same shared backend |
 
----
+## Architecture
+
+High-level layout:
+
+- `core/ai_usage_monitor/`
+  Shared backend, provider registry, normalized state model, config handling.
+- `com.aiusagemonitor/`
+  KDE Plasma widget.
+- `gnome-extension/aiusagemonitor@aimonitor/`
+  GNOME Shell extension.
+- `docs/`
+  Internal reference notes and planning documents.
+
+Runtime flow:
+
+1. KDE or GNOME requests data.
+2. The Python backend reads local files, CLI output, API endpoints, or web/cookie sources.
+3. The backend emits normalized JSON state.
+4. The desktop UI renders panel and popup views from that state.
+
+Shared config file:
+
+- `~/.config/ai-usage-monitor/config.json`
+
+Shared backend install location:
+
+- `~/.local/share/ai-usage-monitor/core`
+
+## Features
+
+- Shared backend for KDE and GNOME
+- Multi-provider normalized state model
+- Compact panel indicator with selectable panel tool
+- Popup usage cards with reset countdowns
+- Provider-specific config in desktop settings
+- Shared config between KDE and GNOME
+- Status, auth, and error state rendering
+- Local-first operation
 
 ## Installation
 
 ### KDE Plasma 6
 
-**Easy install from KDE Store:** [Download on Pling.com](https://www.pling.com/p/2348728/)
+From this repo:
 
-Or see [KDE Plasma Installation](#kde-plasma-installation) below for manual installation.
-
-### GNOME Shell
-
-See [`gnome-extension/README.md`](gnome-extension/README.md) for detailed GNOME installation instructions.
-
-Quick install for GNOME:
-```bash
-cd gnome-extension/aiusagemonitor@aimonitor
-./install.sh
-```
-
----
-
-## Features
-
-- **Multi-tool monitoring** - Track Claude, Codex, and Gemini in one place
-- **Automatic token refresh** - Gemini tokens refresh automatically when expired (NEW!)
-- **Smart retry logic** - Up to 3 retry attempts with detailed error reporting
-- **Color-coded usage** - Visual indicators: 🟢 Green → 🟡 Yellow → 🟠 Orange → 🔴 Red
-- **Fully configurable** - Show/hide tools, adjust refresh rates, customize display
-- **Privacy-first** - No sensitive data exposed, all credentials stay local
-- **Detailed metrics** - See usage percentages, reset times, and model information
-
----
-
-# KDE Plasma Installation
-
-## Install (Plasma 6)
-
-### From KDE Store (Recommended)
-
-1. **Install from Discover (GUI):**
-   - Open System Settings → Appearance → Get New... → Download New Plasma Widgets
-   - Search for "AI Usage Monitor"
-   - Click Install
-
-2. **Or visit the KDE Store:** [https://www.pling.com/p/2348728/](https://www.pling.com/p/2348728/)
-
-### Quick install (this repo)
 ```bash
 cd com.aiusagemonitor
 ./install.sh
 ```
 
-### Manual install
+Manual install:
+
 ```bash
 kpackagetool6 --type Plasma/Applet --install /full/path/to/com.aiusagemonitor
 ```
 
-### Upgrade after changes
+Upgrade after changes:
+
 ```bash
 kpackagetool6 --type Plasma/Applet --upgrade /full/path/to/com.aiusagemonitor
 ```
 
-### Remove
+Restart Plasma shell if the widget does not refresh:
+
 ```bash
-kpackagetool6 --type Plasma/Applet --remove com.aiusagemonitor
+kquitapp6 plasmashell || true
+nohup plasmashell --replace >/tmp/aiusagemonitor-plasmashell.log 2>&1 &
 ```
 
-## Add to panel
-1. Right-click panel -> `Add Widgets...`
-2. Search: `AI Usage Monitor`
-3. Drag it to the panel
+Add the widget:
 
-If it does not appear immediately, restart Plasma shell:
+1. Right-click the panel
+2. `Add Widgets...`
+3. Search for `AI Usage Monitor`
+4. Add it to the panel
+
+Preview in a separate window:
+
 ```bash
-kquitapp6 plasmashell && kstart6 plasmashell
+plasmawindowed com.aiusagemonitor
 ```
 
-## Install from local `.plasmoid` file
-1. In Plasma Widget Explorer: `Get New Widgets` -> `Install Widget From Local File...`
-2. Select your `.plasmoid` package.
+### GNOME Shell
 
-Build a `.plasmoid` package from this project:
+From this repo:
+
 ```bash
-cd com.aiusagemonitor
-bsdtar --format zip -cf ../ai-usage-monitor.plasmoid .
+cd gnome-extension/aiusagemonitor@aimonitor
+bash install.sh
 ```
 
-Install the `.plasmoid` file from terminal:
+Then log out and back in.
+
+Open GNOME preferences:
+
 ```bash
-kpackagetool6 --type Plasma/Applet --install /full/path/to/ai-usage-monitor.plasmoid
+gnome-extensions prefs aiusagemonitor@aimonitor
 ```
 
-Notes:
-- Keep `metadata.json` `Id` stable: `com.aiusagemonitor`
-- Keep `"X-Plasma-API-Minimum-Version": "6.0"` for Plasma 6 visibility.
+## Configuration
 
-## Official references
-- Plasma widget setup and packaging: https://develop.kde.org/docs/plasma/widget/setup/
-- Installing plasmoids (Get New Widgets / local file): https://userbase.kde.org/Plasma/Installing_Plasmoids
-- KDE Store creator/publishing FAQ: https://store.kde.org/faq-pling
+Both desktops use the same shared config file:
+
+```json
+{
+  "version": 1,
+  "refreshInterval": 60,
+  "providers": [
+    { "id": "amp", "enabled": true, "source": "web" },
+    { "id": "claude", "enabled": true, "source": "auto" },
+    { "id": "codex", "enabled": true, "source": "auto" },
+    { "id": "gemini", "enabled": true, "source": "auto" },
+    { "id": "copilot", "enabled": true, "source": "api", "apiKey": "" },
+    { "id": "vertexai", "enabled": true, "source": "oauth", "projectId": "" },
+    { "id": "openrouter", "enabled": true, "source": "api", "apiKey": "" },
+    { "id": "ollama", "enabled": true, "source": "web" },
+    { "id": "opencode", "enabled": true, "source": "web" },
+    { "id": "zai", "enabled": true, "source": "api", "apiKey": "" },
+    { "id": "kilo", "enabled": true, "source": "auto", "apiKey": "" },
+    { "id": "minimax", "enabled": true, "source": "auto", "apiKey": "" }
+  ]
+}
+```
+
+Desktop settings expose:
+
+- refresh interval
+- panel tool
+- panel display mode
+- provider enable/disable
+- provider source mode
+- provider-specific fields such as API key, cookie source, or project ID
+
+## CLI / Debugging
+
+Legacy payload:
+
+```bash
+python3 com.aiusagemonitor/contents/scripts/fetch_all_usage.py
+```
+
+Normalized state payload:
+
+```bash
+python3 com.aiusagemonitor/contents/scripts/fetch_all_usage.py state | python3 -m json.tool
+```
+
+Shared config UI payload:
+
+```bash
+python3 com.aiusagemonitor/contents/scripts/fetch_all_usage.py config-ui | python3 -m json.tool
+```
+
+The standalone helper script also exists here:
+
+- `bin/ai-usage-monitor-state`
+
+## KDE Settings
+
+KDE settings currently control:
+
+- refresh interval
+- panel tool
+- display mode
+- shared provider config
+
+Panel tool labels intentionally use short names:
+
+- `Claude`
+- `Codex`
+- `Gemini`
+- `Copilot`
+- `Vertex`
+
+Provider-specific settings are shared with GNOME because they write to the same config file.
+
+## Provider Sources
+
+Broad source types used in the backend:
+
+- `auto`
+  Tries the provider's preferred local/API flow.
+- `api`
+  Uses an API key or token.
+- `oauth`
+  Uses local OAuth/ADC credentials.
+- `web`
+  Uses web usage pages and cookie-based access.
+- `cli`
+  Uses local CLI output.
+
+## Troubleshooting
+
+### KDE widget shows stale values
+
+Open the popup once. The widget refreshes on popup open and on interval.
+
+Manual restart:
+
+```bash
+kquitapp6 plasmashell || true
+nohup plasmashell --replace >/tmp/aiusagemonitor-plasmashell.log 2>&1 &
+```
+
+### KDE widget not visible after install
+
+```bash
+kpackagetool6 --type Plasma/Applet --list | grep com.aiusagemonitor
+```
+
+### GNOME extension not visible
+
+```bash
+gnome-extensions list | grep aiusagemonitor
+```
+
+### Inspect backend output directly
+
+```bash
+python3 com.aiusagemonitor/contents/scripts/fetch_all_usage.py state | python3 -m json.tool
+```
+
+### Inspect current normalized provider list
+
+```bash
+python3 - <<'PY'
+from core.ai_usage_monitor.providers.registry import ProviderRegistry
+print(ProviderRegistry().list_ids())
+PY
+```
+
+## Development Notes
+
+- `README.md` should reflect the actual `ProviderRegistry`, not historical providers.
+- Provider icons are sourced from `@lobehub/icons` / `@lobehub/icons-static-svg`.
+- Providers without an allowed icon source are intentionally not surfaced in the UI.
+
+## License
+
+GPL-3.0-or-later

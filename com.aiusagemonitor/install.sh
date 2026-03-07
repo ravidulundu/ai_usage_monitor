@@ -8,8 +8,14 @@ ICON_NAME="com.aiusagemonitor"
 ICON_SRC="$WIDGET_DIR/contents/images/plasmoid_mainview.png"
 ICON_DEST_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 ICON_DEST="$ICON_DEST_DIR/$ICON_NAME.png"
+SHARED_CORE_DIR="$HOME/.local/share/ai-usage-monitor"
+REPO_ROOT="$(cd "$WIDGET_DIR/.." && pwd)"
 
 echo "Installing $WIDGET_ID from $WIDGET_DIR..."
+
+mkdir -p "$SHARED_CORE_DIR"
+rm -rf "$SHARED_CORE_DIR/core"
+cp -r "$REPO_ROOT/core" "$SHARED_CORE_DIR/core"
 
 # Remove any previous installation
 kpackagetool6 --type Plasma/Applet --remove "$WIDGET_ID" 2>/dev/null || true
