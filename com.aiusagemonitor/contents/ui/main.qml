@@ -7,20 +7,23 @@ import org.kde.plasma.plasma5support as P5Support
 PlasmoidItem {
     id: root
 
-    // Parsed data from Python script
-    property var claudeData: ({})
-    property var codexData: ({})
-    property var geminiData: ({})
+    // Parsed data from shared Python backend
+    property var providerStates: []
     property bool isLoading: true
     property string lastError: ""
     property string lastUpdated: ""
 
     readonly property int refreshInterval: (Plasmoid.configuration.refreshSecs || 60) * 1000
 
-    // Visibility settings (expose to children, default to true if not set)
-    readonly property bool showClaude: Plasmoid.configuration.showClaude !== false
-    readonly property bool showCodex: Plasmoid.configuration.showCodex !== false
-    readonly property bool showGemini: Plasmoid.configuration.showGemini !== false
+    function providerById(providerId) {
+        if (!providerStates || providerStates.length === 0)
+            return null
+        for (var i = 0; i < providerStates.length; i++) {
+            if (providerStates[i].id === providerId)
+                return providerStates[i]
+        }
+        return null
+    }
 
     // Path to the Python script (resolved relative to this QML file)
     readonly property string scriptPath: {
@@ -59,9 +62,7 @@ PlasmoidItem {
             }
             try {
                 var result = JSON.parse(stdout)
-                root.claudeData = result.claude || {}
-                root.codexData  = result.codex  || {}
-                root.geminiData = result.gemini || {}
+                root.providerStates = result.providers || []
                 root.lastError = ""
                 var now = new Date()
                 root.lastUpdated = now.getHours().toString().padStart(2, "0") + ":" +
@@ -76,7 +77,9 @@ PlasmoidItem {
     function refresh() {
         if (scriptPath === "") return
         root.isLoading = true
-        runner.connectSource("python3 \"" + scriptPath + "\"")
+        // The executable data engine passes arguments directly; quoting the path makes
+        // Python treat the quotes as literal filename characters.
+        runner.connectSource("python3 " + scriptPath)
     }
 
     // Auto-refresh timer
@@ -96,4 +99,9 @@ PlasmoidItem {
 
     // Initial load
     Component.onCompleted: root.refresh()
+
+    onExpandedChanged: {
+        if (expanded)
+            root.refresh()
+    }
 }

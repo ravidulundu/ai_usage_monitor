@@ -1,28 +1,59 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 
 Item {
     id: fullRoot
-    implicitWidth: 360
-    implicitHeight: contentCol.implicitHeight + 24
+    implicitWidth: 344
+    implicitHeight: contentCol.implicitHeight + 16
+    width: implicitWidth
+    height: implicitHeight
 
-    property var cd: root.claudeData
-    property var od: root.codexData
-    property var gd: root.geminiData
-    property bool geminiExpanded: false
-    onGdChanged: {
-        if (!gd || !gd.buckets || gd.buckets.length <= 1)
-            geminiExpanded = false
+    property string selectedProviderId: "overview"
+
+    function branding(provider) {
+        return (provider && provider.metadata && provider.metadata.branding) ? provider.metadata.branding : {}
     }
 
-    // Match GNOME extension colors exactly
+    property var visibleProviderList: {
+        var items = root.providerStates || []
+        var filtered = []
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].enabled !== false && items[i].installed === true)
+                filtered.push(items[i])
+        }
+        filtered.sort(function(a, b) {
+            function rank(provider) {
+                if ((provider.primaryMetric || provider.secondaryMetric) && !provider.error) return 0
+                if (!provider.error) return 1
+                return 2
+            }
+            return rank(a) - rank(b)
+        })
+        return filtered
+    }
+
+    property var overviewProviderList: visibleProviderList.slice(0, 3)
+
+    onVisibleProviderListChanged: {
+        if (selectedProviderId === "overview")
+            return
+        var stillVisible = false
+        for (var i = 0; i < visibleProviderList.length; i++) {
+            if (visibleProviderList[i].id === selectedProviderId) {
+                stillVisible = true
+                break
+            }
+        }
+        if (!stillVisible)
+            selectedProviderId = "overview"
+    }
+
     function usageColor(pct) {
         if (pct >= 90) return "#ef4444"
-        if (pct >= 70) return "#f97316"
+        if (pct >= 70) return "#f59e0b"
         if (pct >= 40) return "#eab308"
         return "#22c55e"
     }
@@ -43,361 +74,368 @@ Item {
         return "in " + mins + "m"
     }
 
-    function formatTokens(n) {
-        if (n === undefined || n === null) return "—"
-        if (n >= 1000000) return (n / 1000000).toFixed(1) + "M"
-        if (n >= 1000) return (n / 1000).toFixed(1) + "k"
-        return n.toString()
+    function providerIcon(provider) {
+        var data = branding(provider)
+        if (!data)
+            return ""
+        var assetName = data.assetName || ""
+        if (!assetName && data.iconKey)
+            assetName = data.iconKey + ".svg"
+        return assetName ? Qt.resolvedUrl("../images/" + assetName) : ""
     }
 
-    function prettyGeminiModel(id) {
-        var m = (id || "").toLowerCase().replace(/^models\//, "")
-        if (!m) return ""
-        m = m.replace(/^gemini-/, "")
-
-        var suffix = ""
-        if (m.indexOf("preview") !== -1 || m.indexOf("exp") !== -1)
-            suffix = " (Preview)"
-
-        if (m.indexOf("2.5-flash-lite") === 0) return "Gemini 2.5 Flash Lite" + suffix
-        if (m.indexOf("2.5-flash") === 0) return "Gemini 2.5 Flash" + suffix
-        if (m.indexOf("2.5-pro") === 0) return "Gemini 2.5 Pro" + suffix
-        if (m.indexOf("2.0-flash") === 0) return "Gemini 2.0 Flash" + suffix
-        if (m.indexOf("2.0-pro") === 0) return "Gemini 2.0 Pro" + suffix
-
-        return ("Gemini " + m.replace(/-/g, " ")) + suffix
+    function providerBadgeText(provider) {
+        var badge = branding(provider).badgeText
+        if (badge)
+            return badge
+        if (!provider || !provider.displayName)
+            return "AI"
+        var words = provider.displayName.split(/\s+/).filter(function(word) { return word.length > 0 })
+        if (words.length >= 2)
+            return (words[0][0] + words[1][0]).toUpperCase()
+        return provider.displayName.slice(0, 2).toUpperCase()
     }
 
-    function prettyCodexModel(id) {
-        var m = (id || "").toLowerCase()
-        if (!m) return ""
-        if (m.indexOf("codex") !== -1) {
-            var major = m.match(/gpt-(\d+)(?:\.\d+)?/)
-            if (major && major.length > 1)
-                return "GPT-" + major[1] + " Codex"
-            return "Codex"
+    function providerSubtitle(provider) {
+        var extras = provider && provider.extras ? provider.extras : {}
+        var parts = []
+        if (provider && provider.source)
+            parts.push(String(provider.source).toUpperCase())
+        if (extras.model)
+            parts.push(extras.model)
+        if (extras.plan)
+            parts.push(extras.plan)
+        return parts.join(" · ")
+    }
+
+    function formatLocalUsage(localUsage) {
+        if (!localUsage)
+            return ""
+        var parts = []
+        if (localUsage.sessionTokens !== null && localUsage.sessionTokens !== undefined)
+            parts.push("session " + localUsage.sessionTokens + " tok")
+        if (localUsage.last30DaysTokens !== null && localUsage.last30DaysTokens !== undefined)
+            parts.push("30d " + localUsage.last30DaysTokens + " tok")
+        return parts.join(" · ")
+    }
+
+    function selectedProvider() {
+        for (var i = 0; i < visibleProviderList.length; i++) {
+            if (visibleProviderList[i].id === selectedProviderId)
+                return visibleProviderList[i]
         }
-        return id
+        return null
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        radius: 16
+        color: Qt.rgba(0.07, 0.08, 0.11, 0.97)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.08)
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        radius: 16
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.rgba(0.24, 0.34, 0.94, 0.08) }
+            GradientStop { position: 0.45; color: Qt.rgba(0.03, 0.03, 0.04, 0.0) }
+            GradientStop { position: 1.0; color: Qt.rgba(0.98, 0.72, 0.16, 0.05) }
+        }
     }
 
     ColumnLayout {
         id: contentCol
-        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-        spacing: 0
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: parent.top
+            margins: 10
+        }
+        spacing: 8
 
-        // ── Header ─────────────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
-            Layout.bottomMargin: 10
 
-            PC3.Label {
-                text: "AI Usage Monitor"
-                font.bold: true
-                font.pixelSize: 14
+            ColumnLayout {
+                spacing: 0
                 Layout.fillWidth: true
+
+                PC3.Label {
+                    text: "AI Usage Monitor"
+                    font.bold: true
+                    font.pixelSize: 14
+                }
+
+                PC3.Label {
+                    text: root.lastUpdated ? ("Updated " + root.lastUpdated) : "Shared backend state"
+                    color: Kirigami.Theme.disabledTextColor
+                    font.pixelSize: 10
+                }
             }
 
             PC3.ToolButton {
                 icon.name: "view-refresh"
                 enabled: !root.isLoading
                 onClicked: root.refresh()
-                PC3.ToolTip.text: root.lastUpdated ? "Updated " + root.lastUpdated : "Click to refresh"
+                PC3.ToolTip.text: "Refresh"
                 PC3.ToolTip.visible: hovered
-                PC3.ToolTip.delay: 500
+                PC3.ToolTip.delay: 250
             }
         }
 
-        // ── CLAUDE CODE ────────────────────────────────────────────────────
         Loader {
             Layout.fillWidth: true
-            Layout.preferredHeight: active ? implicitHeight : 0
-            visible: active
-            active: cd.installed === true && root.showClaude
-
-            sourceComponent: ColumnLayout {
-                spacing: 6
-
-                // Card header
-                RowLayout {
-                    Image {
-                        source: Qt.resolvedUrl("../images/claude-icon-22.png")
-                        width: 16; height: 16; fillMode: Image.PreserveAspectFit; smooth: true
-                    }
-                    PC3.Label { text: "CLAUDE CODE"; font.bold: true; font.pixelSize: 12 }
-                    Item { Layout.fillWidth: true }
-                }
-
-                // Error message (separate row)
-                PC3.Label {
-                    visible: !!cd.error
-                    text: cd.error || ""
-                    color: Kirigami.Theme.negativeTextColor
-                    font.pixelSize: 10
-                    wrapMode: Text.Wrap
-                    width: 320
-                    Layout.preferredWidth: 320
-                }
-
-                // 5h bar
-                Loader {
-                    Layout.fillWidth: true
-                    active: cd.five_hour_pct !== undefined && !cd.error
-
-                    sourceComponent: UsageBar {
-                        label: "5h"
-                        pct: Math.min(cd.five_hour_pct || 0, 100)
-                        pctText: (cd.five_hour_pct || 0) + "%"
-                        resetText: fullRoot.formatReset(cd.five_hour_reset)
-                        barColor: fullRoot.usageColor(cd.five_hour_pct || 0)
-                    }
-                }
-
-                // 7d bar (only if data available)
-                Loader {
-                    Layout.fillWidth: true
-                    active: cd.seven_day_pct !== null && cd.seven_day_pct !== undefined && !cd.error
-
-                    sourceComponent: UsageBar {
-                        label: "7d"
-                        pct: Math.min(cd.seven_day_pct || 0, 100)
-                        pctText: (cd.seven_day_pct || 0) + "%"
-                        resetText: fullRoot.formatReset(cd.seven_day_reset)
-                        barColor: fullRoot.usageColor(cd.seven_day_pct || 0)
-                    }
-                }
-
-                PC3.Label {
-                    visible: cd.seven_day_pct === null || cd.seven_day_pct === undefined
-                    text: "7-day limit: not tracked on this plan"
-                    font.pixelSize: 10
-                    color: Kirigami.Theme.disabledTextColor
-                }
-
-                Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4 }
-            }
-        }
-
-        // ── OPENAI CODEX ───────────────────────────────────────────────────
-        Loader {
-            Layout.fillWidth: true
-            Layout.preferredHeight: active ? implicitHeight : 0
-            visible: active
-            active: od.installed === true && root.showCodex === true
-
-            sourceComponent: ColumnLayout {
-                spacing: 6
+            active: visibleProviderList.length > 0
+            sourceComponent: Flickable {
+                Layout.fillWidth: true
+                contentWidth: switcherRow.implicitWidth
+                contentHeight: switcherRow.implicitHeight
+                clip: true
+                interactive: contentWidth > width
+                boundsBehavior: Flickable.StopAtBounds
 
                 RowLayout {
-                    Item {
-                        width: 16; height: 16
-                        Image {
-                            id: codexFullImg
-                            source: Qt.resolvedUrl("../images/codex_icon.png")
-                            width: 16; height: 16; fillMode: Image.PreserveAspectFit; smooth: true
-                            visible: status === Image.Ready
-                        }
-                        Rectangle {
-                            visible: codexFullImg.status !== Image.Ready
-                            width: 14; height: 14; radius: 3; anchors.centerIn: parent
-                            color: "#10A37F"
+                    id: switcherRow
+                    spacing: 6
+
+                    Repeater {
+                        model: ["overview"].concat(fullRoot.visibleProviderList.map(function(provider) { return provider.id }))
+
+                        delegate: QQC2.Button {
+                            required property var modelData
+                            readonly property string providerId: modelData
+                            readonly property var provider: providerId === "overview" ? null : fullRoot.visibleProviderList.find(function(item) { return item.id === providerId })
+                            text: providerId === "overview" ? "Overview" : (provider ? provider.displayName : providerId)
+                            highlighted: fullRoot.selectedProviderId === providerId
+                            onClicked: fullRoot.selectedProviderId = providerId
+                            flat: !highlighted
                         }
                     }
-                    PC3.Label { text: "OPENAI CODEX"; font.bold: true; font.pixelSize: 12 }
-                    PC3.Label {
-                        visible: !!od.model
-                        text: od.model ? "· " + fullRoot.prettyCodexModel(od.model) : ""
-                        font.pixelSize: 10
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    Item { Layout.fillWidth: true }
-                    PC3.Label {
-                        visible: !!od.plan_type
-                        text: od.plan_type || ""
-                        font.pixelSize: 10
-                        color: Kirigami.Theme.disabledTextColor
-                    }
                 }
-
-                Loader {
-                    Layout.fillWidth: true
-                    active: od.five_hour_pct !== undefined && od.has_data !== false
-
-                    sourceComponent: UsageBar {
-                        label: "5h"
-                        pct: Math.min(od.five_hour_pct || 0, 100)
-                        pctText: Math.round(od.five_hour_pct || 0) + "%"
-                        resetText: fullRoot.formatReset(od.five_hour_reset)
-                        barColor: fullRoot.usageColor(od.five_hour_pct || 0)
-                    }
-                }
-
-                Loader {
-                    Layout.fillWidth: true
-                    active: od.seven_day_pct !== undefined && od.has_data !== false
-
-                    sourceComponent: UsageBar {
-                        label: "7d"
-                        pct: Math.min(od.seven_day_pct || 0, 100)
-                        pctText: Math.round(od.seven_day_pct || 0) + "%"
-                        resetText: fullRoot.formatReset(od.seven_day_reset)
-                        barColor: fullRoot.usageColor(od.seven_day_pct || 0)
-                    }
-                }
-
-                PC3.Label {
-                    visible: od.has_data === false
-                    text: "No session data yet"
-                    font.pixelSize: 10
-                    color: Kirigami.Theme.disabledTextColor
-                }
-
-                Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4 }
             }
         }
 
-        // ── GEMINI CLI ─────────────────────────────────────────────────────
         Loader {
             Layout.fillWidth: true
-            Layout.preferredHeight: active ? implicitHeight : 0
-            visible: active
-            active: gd.installed === true && root.showGemini === true
-
+            active: visibleProviderList.length > 0 && selectedProviderId === "overview"
             sourceComponent: ColumnLayout {
-                id: geminiCard
                 spacing: 6
-                readonly property bool canExpand: !!(gd.buckets && gd.buckets.length > 1 && !gd.error)
 
-                RowLayout {
-                    id: geminiHeaderRow
-                    Image {
-                        source: Qt.resolvedUrl("../images/gemini_icon.png")
-                        width: 16; height: 16; fillMode: Image.PreserveAspectFit; smooth: true
-                    }
-                    PC3.Label { text: "GEMINI CLI"; font.bold: true; font.pixelSize: 12 }
-                    Item { Layout.fillWidth: true }
-                    QQC2.Button {
-                        visible: geminiCard.canExpand
-                        text: fullRoot.geminiExpanded
-                            ? "Hide models"
-                            : ("Models (" + (gd.buckets ? gd.buckets.length : 0) + ")")
-                        onClicked: fullRoot.geminiExpanded = !fullRoot.geminiExpanded
-                    }
-                }
-
-                // Collapsed: single overview bar (model with lowest remaining fraction)
-                Loader {
-                    Layout.fillWidth: true
-                    active: gd.used_pct !== undefined && !gd.error && !fullRoot.geminiExpanded
-
-                    sourceComponent: UsageBar {
-                        label: gd.model ? fullRoot.prettyGeminiModel(gd.model) : "Gemini quota"
-                        pct: Math.min(gd.used_pct || 0, 100)
-                        pctText: (gd.used_pct || 0) + "%"
-                        resetText: fullRoot.formatReset(gd.reset_time)
-                        barColor: fullRoot.usageColor(gd.used_pct || 0)
-                    }
-                }
-
-                // Expanded: one bar per model bucket
                 Repeater {
-                    model: (fullRoot.geminiExpanded && gd.buckets) ? gd.buckets : []
-                    delegate: UsageBar {
-                        readonly property var bkt: modelData
-                        label: fullRoot.prettyGeminiModel(bkt.model || "")
-                        pct: Math.min(bkt.used_pct || 0, 100)
-                        pctText: (bkt.used_pct || 0) + "%"
-                        resetText: fullRoot.formatReset(bkt.reset_time)
-                        barColor: fullRoot.usageColor(bkt.used_pct || 0)
+                    model: fullRoot.overviewProviderList
+
+                    delegate: ProviderRow {
+                        provider: modelData
+                        compact: true
                     }
                 }
-
-                PC3.Label {
-                    visible: !!gd.error
-                    text: gd.error || ""
-                    font.pixelSize: 10
-                    color: Kirigami.Theme.negativeTextColor
-                    wrapMode: Text.Wrap
-                    width: 320
-                    Layout.preferredWidth: 320
-                }
-
-                Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4 }
             }
         }
 
-        // ── No tools installed or visible ──────────────────────────────────
         Loader {
             Layout.fillWidth: true
-            Layout.preferredHeight: active ? implicitHeight : 0
-            visible: active
-            readonly property bool claudeVisible: cd.installed === true && root.showClaude === true
-            readonly property bool codexVisible: od.installed === true && root.showCodex === true
-            readonly property bool geminiVisible: gd.installed === true && root.showGemini === true
-            active: !claudeVisible && !codexVisible && !geminiVisible
+            active: visibleProviderList.length > 0 && selectedProviderId !== "overview" && !!selectedProvider()
+            sourceComponent: ProviderRow {
+                provider: fullRoot.selectedProvider()
+                compact: false
+            }
+        }
 
-            sourceComponent: PC3.Label {
-                text: {
-                    if (root.isLoading) return "Loading…"
-                    var allHidden = (cd.installed === true || od.installed === true || gd.installed === true)
-                    return allHidden ? "All tools hidden in settings" : "No AI tools detected"
+        Loader {
+            Layout.fillWidth: true
+            active: visibleProviderList.length === 0
+            sourceComponent: Rectangle {
+                radius: 12
+                color: Qt.rgba(1, 1, 1, 0.03)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.06)
+                implicitHeight: 78
+
+                PC3.Label {
+                    anchors.centerIn: parent
+                    text: {
+                        if (root.isLoading) return "Loading…"
+                        if (root.lastError) return root.lastError
+                        return (root.providerStates && root.providerStates.length > 0)
+                            ? "All tools hidden in shared config"
+                            : "No AI tools detected"
+                    }
+                    color: Kirigami.Theme.disabledTextColor
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    width: 250
                 }
+            }
+        }
+    }
+
+    component ProviderHeader: RowLayout {
+        property var provider: null
+        Layout.fillWidth: true
+        spacing: 8
+
+        Image {
+            width: 18
+            height: 18
+            source: fullRoot.providerIcon(provider)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            visible: source !== ""
+        }
+
+        Rectangle {
+            width: 18
+            height: 18
+            radius: 9
+            color: fullRoot.branding(provider).color || "#64748b"
+            visible: fullRoot.providerIcon(provider) === ""
+
+            Text {
+                anchors.centerIn: parent
+                text: fullRoot.providerBadgeText(provider)
+                font.pixelSize: 8
+                font.bold: true
+                color: "#ffffff"
+            }
+        }
+
+        ColumnLayout {
+            spacing: 0
+            Layout.fillWidth: true
+
+            PC3.Label {
+                text: provider ? provider.displayName : ""
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            PC3.Label {
+                visible: fullRoot.providerSubtitle(provider) !== ""
+                text: fullRoot.providerSubtitle(provider)
                 color: Kirigami.Theme.disabledTextColor
-                horizontalAlignment: Text.AlignHCenter
+                font.pixelSize: 10
+            }
+        }
+    }
+
+    component ProviderRow: Rectangle {
+        id: providerRow
+        property var provider: null
+        property bool compact: false
+        readonly property var extras: provider && provider.extras ? provider.extras : ({})
+        radius: 14
+        color: Qt.rgba(1, 1, 1, 0.04)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.07)
+        Layout.fillWidth: true
+        implicitHeight: rowContent.implicitHeight + 14
+
+        ColumnLayout {
+            id: rowContent
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 6
+
+            ProviderHeader { provider: providerRow.provider }
+
+            PC3.Label {
+                visible: !!(provider && provider.error)
+                text: provider ? provider.error : ""
+                color: "#ff7b7b"
+                font.pixelSize: 10
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            Loader {
+                Layout.fillWidth: true
+                active: !!(provider && provider.primaryMetric) && !(provider && provider.error)
+                sourceComponent: UsageRow {
+                    metric: providerRow.provider.primaryMetric
+                    compact: providerRow.compact
+                }
+            }
+
+            Loader {
+                Layout.fillWidth: true
+                active: !!(provider && provider.secondaryMetric) && !(provider && provider.error)
+                sourceComponent: UsageRow {
+                    metric: providerRow.provider.secondaryMetric
+                    compact: providerRow.compact
+                }
+            }
+
+            Repeater {
+                model: (!(provider && provider.error) && !compact && extras.buckets) ? extras.buckets : []
+
+                delegate: UsageRow {
+                    metric: {
+                        "label": modelData.model || "Model",
+                        "usedPct": modelData.used_pct || 0,
+                        "resetAt": modelData.reset_time || ""
+                    }
+                    compact: true
+                }
+            }
+
+            PC3.Label {
+                visible: !compact && !!(provider && provider.localUsage) && fullRoot.formatLocalUsage(provider.localUsage) !== ""
+                text: fullRoot.formatLocalUsage(provider.localUsage)
+                color: Kirigami.Theme.disabledTextColor
+                font.pixelSize: 10
                 Layout.fillWidth: true
             }
         }
-
-        Item { height: 4 }
     }
 
-    // ── Reusable usage bar component ────────────────────────────────────────
-    component UsageBar: RowLayout {
-        property string label: ""
-        property real pct: 0
-        property string pctText: "0%"
-        property string resetText: ""
-        property color barColor: Kirigami.Theme.positiveTextColor
-
-        spacing: 6
+    component UsageRow: ColumnLayout {
+        property var metric: null
+        property bool compact: false
+        spacing: 3
         Layout.fillWidth: true
 
-        PC3.Label {
-            text: label
-            font.pixelSize: 10
-            color: Kirigami.Theme.disabledTextColor
-            Layout.minimumWidth: 18
+        RowLayout {
+            Layout.fillWidth: true
+
+            PC3.Label {
+                text: metric ? metric.label : ""
+                font.pixelSize: 10
+                color: Kirigami.Theme.disabledTextColor
+            }
+
+            Item { Layout.fillWidth: true }
+
+            PC3.Label {
+                text: metric ? (Math.round(metric.usedPct || 0) + "%") : ""
+                font.pixelSize: compact ? 10 : 11
+                font.bold: true
+                color: fullRoot.usageColor(metric ? metric.usedPct || 0 : 0)
+            }
+
+            PC3.Label {
+                text: metric ? fullRoot.formatReset(metric.resetAt) : ""
+                font.pixelSize: 10
+                color: Kirigami.Theme.disabledTextColor
+                visible: text !== ""
+            }
         }
 
         Rectangle {
             Layout.fillWidth: true
-            height: 8
-            radius: 4
-            color: Kirigami.Theme.backgroundColor
+            height: compact ? 5 : 7
+            radius: height / 2
+            color: Qt.rgba(1, 1, 1, 0.08)
 
             Rectangle {
-                width: parent.width * (pct / 100)
+                width: parent.width * (Math.min(metric ? metric.usedPct || 0 : 0, 100) / 100)
                 height: parent.height
                 radius: parent.radius
-                color: barColor
+                color: fullRoot.usageColor(metric ? metric.usedPct || 0 : 0)
 
-                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             }
-        }
-
-        PC3.Label {
-            text: pctText
-            font.pixelSize: 11
-            font.bold: true
-            color: barColor
-            Layout.minimumWidth: 36
-            horizontalAlignment: Text.AlignRight
-        }
-
-        PC3.Label {
-            text: resetText
-            font.pixelSize: 10
-            color: Kirigami.Theme.disabledTextColor
-            Layout.minimumWidth: 70
         }
     }
 }
