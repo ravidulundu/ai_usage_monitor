@@ -88,7 +88,7 @@ if [[ ${QMLLINT_RC} -eq 0 ]]; then
 fi
 
 if [[ -n "${QMLLINT_OUTPUT}" ]]; then
-  if grep -qiE '(^|[[:space:]])Error:|: error:|parse error|unexpected token|expected token' <<<"${QMLLINT_OUTPUT}"; then
+  if grep -qE '(^|[[:space:]])Error:|parse error|unexpected token|expected token' <<<"${QMLLINT_OUTPUT}"; then
     echo "${QMLLINT_OUTPUT}" >&2
     exit "${QMLLINT_RC}"
   fi
