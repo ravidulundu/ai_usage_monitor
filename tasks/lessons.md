@@ -4,6 +4,7 @@
 
 - Review yorumları kapanmış olsa bile CI kırığı bağımsız olabilir; önce en güncel failing run logu okunmalı, varsayım yapılmamalı.
 - `qmllint` gibi Qt araçlarında sadece `command -v` yetmez; CI için `qtpaths6 --query QT_HOST_BINS` ve `/usr/lib/qt6/bin` fallback’i eklenmeli.
+- `qmllint` CI’da Plasma modülleri eksikken import-resolution warning ile dönebilir; syntax gate bu warning’leri parse/syntax error’dan ayırarak değerlendirmeli.
 - Shell scriptlerde `A && B || true` kalıbı shellcheck SC2015 üretir; davranışı koruyan açık `if` bloğuna çevirmek daha güvenli ve okunabilir.
 
 ## 2026-03-08 - Lint Coverage ve Baseline Guard Dürüstlüğü

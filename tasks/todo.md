@@ -5,6 +5,7 @@
 - [x] Copilot review yorumlarına karşılık gelen patchleri doğrula ve uygula
 - [x] Shellcheck SC2015 kırığını `install.sh` içinde güvenli if bloğuna çevir
 - [x] `qmllint` tespitini CI runner path farklılıklarına dayanıklı hale getir
+- [x] `qmllint` çıktısında import-resolution warning ile gerçek syntax hatasını ayır
 - [x] Quality workflow içinde Qt6 binary path'lerini `GITHUB_PATH` ile aç
 - [x] Doğrulama: `make lint`, `make typecheck`, `make health-ci PYTHON=python`
 
