@@ -92,7 +92,7 @@ Shared backend install location:
 
 ## Development Quality Gates
 
-Developer onboarding ve kısa kurallar için:
+For developer onboarding and concise engineering rules:
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
@@ -107,10 +107,13 @@ Root commands:
 ```bash
 make check        # full checks + tests
 make lint         # fast quality gates
+make health-ci    # strict CI gates (fails on warnings)
 make typecheck    # mypy static type check for core
 make format       # apply Python formatting
 make format-check # formatting validation only
 make test         # pytest
+make hooks-install
+make hooks-run
 ```
 
 Equivalent npm scripts:
@@ -129,6 +132,14 @@ Pre-commit:
 ./.venv/bin/pre-commit install
 ./.venv/bin/pre-commit run --all-files
 ```
+
+CI runs the strict gate:
+
+```bash
+make health-ci PYTHON=python
+```
+
+This gate includes syntax/lint/typecheck/test plus KDE/GNOME contracts and debt guardrails.
 
 ## Installation
 
@@ -312,6 +323,17 @@ gnome-extensions list | grep aiusagemonitor
 ```bash
 python3 com.aiusagemonitor/contents/scripts/fetch_all_usage.py state | python3 -m json.tool
 ```
+
+### qml-syntax fails in CI
+
+Run the same command locally:
+
+```bash
+tools/run_qmllint.sh
+```
+
+The qml gate fails on real syntax/parse errors.  
+Environment-only import-resolution warnings (common on headless CI images without full Plasma QML modules) are logged but not treated as syntax failures.
 
 ### Inspect current normalized provider list
 
