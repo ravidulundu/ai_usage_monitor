@@ -4,10 +4,19 @@ import json
 import os
 import urllib.error
 import urllib.request
+from typing import Any
 
 from core.ai_usage_monitor.models import MetricWindow, ProviderState
-from core.ai_usage_monitor.providers.base import ProviderBranding, ProviderConfigField, ProviderDescriptor
-from core.ai_usage_monitor.util import classify_exception_failure, classify_http_failure, read_http_error_body
+from core.ai_usage_monitor.providers.base import (
+    ProviderBranding,
+    ProviderConfigField,
+    ProviderDescriptor,
+)
+from core.ai_usage_monitor.shared.http_failures import (
+    classify_exception_failure,
+    classify_http_failure,
+    read_http_error_body,
+)
 
 
 DESCRIPTOR = ProviderDescriptor(
@@ -16,28 +25,44 @@ DESCRIPTOR = ProviderDescriptor(
     short_name="Kimi K2",
     default_enabled=True,
     source_modes=("api",),
-    config_fields=(
-        ProviderConfigField("apiKey", "API Key", secret=True),
-    ),
+    config_fields=(ProviderConfigField("apiKey", "API Key", secret=True),),
     branding=ProviderBranding(icon_key="kimik2", color="#1783FF", badge_text="K2"),
 )
 
 
-def _api_key(settings: dict | None) -> str | None:
-    if settings and isinstance(settings.get("apiKey"), str) and settings.get("apiKey").strip():
-        return settings.get("apiKey").strip()
-    return os.environ.get("KIMI_K2_API_KEY") or os.environ.get("KIMI_API_KEY") or os.environ.get("KIMI_KEY")
+def _api_key(settings: dict[str, Any] | None) -> str | None:
+    if settings:
+        api_key_raw = settings.get("apiKey")
+        if isinstance(api_key_raw, str):
+            api_key = api_key_raw.strip()
+            if api_key:
+                return api_key
+    return (
+        os.environ.get("KIMI_K2_API_KEY")
+        or os.environ.get("KIMI_API_KEY")
+        or os.environ.get("KIMI_KEY")
+    )
 
 
-def collect_kimik2(settings: dict | None = None) -> tuple[dict, ProviderState]:
+def collect_kimik2(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
     api_key = _api_key(settings)
     if not api_key:
-        return {"installed": False}, ProviderState(id=DESCRIPTOR.id, display_name=DESCRIPTOR.display_name, installed=False, source="api")
+        return {"installed": False}, ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source="api",
+        )
 
     try:
         req = urllib.request.Request(
             "https://kimi-k2.ai/api/user/credits",
-            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+            },
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             payload = json.loads(resp.read())
@@ -60,7 +85,11 @@ def collect_kimik2(settings: dict | None = None) -> tuple[dict, ProviderState]:
             except Exception:
                 remaining = None
         total = (consumed or 0) + (remaining or 0)
-        used_pct = 0.0 if total <= 0 else min(100.0, max(0.0, ((consumed or 0) / total) * 100.0))
+        used_pct = (
+            0.0
+            if total <= 0
+            else min(100.0, max(0.0, ((consumed or 0) / total) * 100.0))
+        )
 
         legacy = {
             "installed": True,
@@ -79,10 +108,14 @@ def collect_kimik2(settings: dict | None = None) -> tuple[dict, ProviderState]:
         )
         return legacy, state
     except urllib.error.HTTPError as err:
-        legacy = {"installed": True, **classify_http_failure("kimik2", err.code, read_http_error_body(err))}
+        legacy = {
+            "installed": True,
+            **classify_http_failure("kimik2", err.code, read_http_error_body(err)),
+        }
     except Exception as err:
         legacy = {"installed": True, **classify_exception_failure(err)}
 
+    error_text = str(legacy.get("error") or "").strip() or None
     state = ProviderState(
         id=DESCRIPTOR.id,
         display_name=DESCRIPTOR.display_name,
@@ -90,6 +123,6 @@ def collect_kimik2(settings: dict | None = None) -> tuple[dict, ProviderState]:
         authenticated=legacy.get("fail_reason") != "auth_required",
         status="error",
         source="api",
-        error=legacy.get("error"),
+        error=error_text,
     )
     return legacy, state

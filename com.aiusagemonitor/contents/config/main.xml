@@ -13,7 +13,7 @@
         </entry>
         <entry name="panelTool" type="String">
             <label>Tool to display in panel</label>
-            <default>claude</default>
+            <default>auto</default>
         </entry>
         <entry name="panelDisplayMode" type="Int">
             <label>Panel display style (0=ring+%, 1=ring only, 2=% only)</label>

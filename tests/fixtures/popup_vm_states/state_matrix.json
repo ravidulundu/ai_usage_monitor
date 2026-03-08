@@ -1,0 +1,308 @@
+{
+  "scenarios": [
+    {
+      "name": "normal_state",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "codex",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": ["claude", "codex"],
+        "providers": [
+          {
+            "id": "codex",
+            "displayName": "OpenAI Codex",
+            "enabled": true,
+            "installed": true,
+            "source": "cli",
+            "primaryMetric": {"label": "5h", "usedPct": 65, "resetAt": "2099-01-01T08:00:00+00:00", "kind": "session"},
+            "secondaryMetric": {"label": "7d", "usedPct": 31, "resetAt": "2099-01-02T00:00:00+00:00", "kind": "weekly"},
+            "metadata": {"identity": {"changed": false, "fingerprint": "codex-fp"}},
+            "extras": {"identityFingerprint": "codex-fp"}
+          },
+          {
+            "id": "claude",
+            "displayName": "Claude Code",
+            "enabled": false,
+            "installed": true,
+            "source": "oauth"
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "codex",
+        "providerId": "codex",
+        "panelTone": "accent",
+        "metric": {"available": true, "stale": false, "leftTextContains": "% used"},
+        "switching": {"active": false, "kind": "identity"},
+        "sourceUnavailableCode": null,
+        "errorHasError": false,
+        "enabledProviderIds": ["codex"],
+        "overviewProviderIds": ["claude", "codex"],
+        "overviewCardProviderIds": ["claude", "codex"]
+      }
+    },
+    {
+      "name": "no_data",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "openrouter",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "openrouter",
+            "displayName": "OpenRouter",
+            "enabled": true,
+            "installed": true,
+            "source": "auto",
+            "sourceModel": {
+              "canonicalMode": "hybrid",
+              "sourceLabel": "Hybrid",
+              "sourceStrategy": {"preferredSource": "auto", "resolvedSource": "auto", "fallbackActive": false},
+              "providerCapabilities": {"supportsLocalCli": false, "supportsApi": false, "supportsWeb": false},
+              "availability": {"localToolInstalled": true, "apiConfigured": true, "apiKeyPresent": true, "authValid": true}
+            }
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "openrouter",
+        "providerId": "openrouter",
+        "panelTone": "ok",
+        "metric": {"available": false, "stale": false, "leftTextEquals": "Data unavailable"},
+        "switching": {"active": false, "kind": "identity"},
+        "sourceUnavailableCode": null,
+        "errorHasError": false
+      }
+    },
+    {
+      "name": "stale",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "codex",
+      "state": {
+        "updatedAt": "2020-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "codex",
+            "displayName": "OpenAI Codex",
+            "enabled": true,
+            "installed": true,
+            "source": "cli",
+            "primaryMetric": {"label": "5h", "usedPct": 42, "resetAt": "2099-01-01T08:00:00+00:00", "kind": "session"}
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "codex",
+        "providerId": "codex",
+        "panelTone": "accent",
+        "metric": {"available": true, "stale": true, "secondaryTextContains": "Stale data"},
+        "switching": {"active": false, "kind": "identity"},
+        "sourceUnavailableCode": null,
+        "errorHasError": false
+      }
+    },
+    {
+      "name": "error",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "codex",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "codex",
+            "displayName": "OpenAI Codex",
+            "enabled": true,
+            "installed": true,
+            "source": "cli",
+            "error": "network timeout"
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "codex",
+        "providerId": "codex",
+        "panelTone": "error",
+        "metric": {"available": false, "stale": false, "leftTextEquals": "Unable to refresh"},
+        "switching": {"active": false, "kind": "identity"},
+        "sourceUnavailableCode": "local_usage_unavailable",
+        "errorHasError": true
+      }
+    },
+    {
+      "name": "fallback_active",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "kilo",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "kilo",
+            "displayName": "Kilo",
+            "enabled": true,
+            "installed": true,
+            "source": "api",
+            "sourceModel": {
+              "canonicalMode": "hybrid",
+              "sourceLabel": "Hybrid",
+              "sourceStrategy": {
+                "preferredSource": "api",
+                "resolvedSource": "api",
+                "fallbackActive": true,
+                "fallbackReason": "source_error",
+                "resolutionReason": "provider_reported_active_source"
+              },
+              "providerCapabilities": {"supportsLocalCli": true, "supportsApi": true, "supportsWeb": false},
+              "availability": {"localToolInstalled": false, "apiConfigured": true, "apiKeyPresent": true, "authValid": true}
+            }
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "kilo",
+        "providerId": "kilo",
+        "panelTone": "ok",
+        "metric": {"available": false, "stale": false, "leftTextEquals": "Data unavailable"},
+        "switching": {"active": false, "kind": "identity"},
+        "sourceUnavailableCode": null,
+        "sourceStatusTagIncludes": ["Fallback active"],
+        "errorHasError": false
+      }
+    },
+    {
+      "name": "account_switched",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "codex",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "codex",
+            "displayName": "OpenAI Codex",
+            "enabled": true,
+            "installed": true,
+            "source": "auto",
+            "sourceModel": {
+              "canonicalMode": "hybrid",
+              "sourceLabel": "Hybrid",
+              "sourceStrategy": {"preferredSource": "auto", "resolvedSource": "auto", "fallbackActive": false},
+              "providerCapabilities": {"supportsLocalCli": false, "supportsApi": false, "supportsWeb": false},
+              "availability": {"localToolInstalled": true, "apiConfigured": true, "apiKeyPresent": true, "authValid": true}
+            },
+            "metadata": {
+              "identity": {
+                "changed": true,
+                "accountChanged": true,
+                "sourceChanged": false,
+                "fingerprint": "account-b"
+              }
+            },
+            "extras": {"identityChanged": true, "accountSwitched": true}
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "codex",
+        "providerId": "codex",
+        "panelTone": "ok",
+        "metric": {"available": false, "stale": false, "leftTextEquals": "Account switched"},
+        "switching": {"active": true, "kind": "account"},
+        "sourceUnavailableCode": null,
+        "errorHasError": false
+      }
+    },
+    {
+      "name": "source_switched",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "opencode",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "opencode",
+            "displayName": "OpenCode",
+            "enabled": true,
+            "installed": true,
+            "source": "api",
+            "sourceModel": {
+              "canonicalMode": "hybrid",
+              "sourceLabel": "Hybrid",
+              "sourceStrategy": {
+                "preferredSource": "cli",
+                "resolvedSource": "api",
+                "fallbackActive": true,
+                "fallbackReason": "local_unavailable",
+                "resolutionReason": "preferred_source_unavailable"
+              },
+              "providerCapabilities": {"supportsLocalCli": true, "supportsApi": true, "supportsWeb": false},
+              "availability": {"localToolInstalled": false, "apiConfigured": true, "apiKeyPresent": true, "authValid": true}
+            },
+            "metadata": {
+              "identity": {
+                "changed": true,
+                "accountChanged": false,
+                "sourceChanged": true,
+                "fingerprint": "source-b"
+              }
+            },
+            "extras": {"identityChanged": true, "sourceSwitched": true}
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "opencode",
+        "providerId": "opencode",
+        "panelTone": "error",
+        "metric": {"available": false, "stale": false, "leftTextEquals": "Source switched"},
+        "switching": {"active": true, "kind": "source"},
+        "sourceUnavailableCode": "source_switched",
+        "sourceStatusTagIncludes": ["Fallback active"],
+        "errorHasError": true
+      }
+    },
+    {
+      "name": "provider_unavailable",
+      "refreshIntervalSeconds": 60,
+      "preferredProviderId": "codex",
+      "state": {
+        "updatedAt": "2099-01-01T00:00:00+00:00",
+        "overviewProviderIds": [],
+        "providers": [
+          {
+            "id": "codex",
+            "displayName": "OpenAI Codex",
+            "enabled": true,
+            "installed": false,
+            "source": "cli",
+            "sourceModel": {
+              "canonicalMode": "unavailable",
+              "sourceLabel": "Unavailable",
+              "sourceStrategy": {
+                "preferredSource": "cli",
+                "resolvedSource": "cli",
+                "fallbackActive": false,
+                "resolutionReason": "default_source"
+              },
+              "providerCapabilities": {"supportsLocalCli": true, "supportsApi": false, "supportsWeb": false},
+              "availability": {"localToolInstalled": false, "apiConfigured": false, "apiKeyPresent": false, "authValid": false}
+            }
+          }
+        ]
+      },
+      "expect": {
+        "selectedProviderId": "codex",
+        "providerId": "codex",
+        "panelTone": "error",
+        "metric": {"available": false, "stale": false, "leftTextEquals": "CLI not installed"},
+        "switching": {"active": false, "kind": "identity"},
+        "sourceUnavailableCode": "cli_not_installed",
+        "errorHasError": true
+      }
+    }
+  ]
+}

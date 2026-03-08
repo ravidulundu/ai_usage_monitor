@@ -1,0 +1,80 @@
+{
+  "scenarios": [
+    {
+      "name": "hybrid_local_ready",
+      "descriptor": {
+        "id": "sample-hybrid",
+        "displayName": "Sample Hybrid",
+        "sourceModes": ["auto", "cli", "api"],
+        "preferredSourcePolicy": "local_first"
+      },
+      "settings": {
+        "source": "local_cli",
+        "apiKey": "sample-key"
+      },
+      "provider": {
+        "id": "sample-hybrid",
+        "displayName": "Sample Hybrid",
+        "installed": true,
+        "authenticated": true,
+        "source": "cli"
+      },
+      "expect": {
+        "canonicalMode": "hybrid",
+        "sourceModeLabel": "Hybrid (local-first)",
+        "activeSourceLabel": "Active CLI",
+        "sourceStatusLabel": "Status: Ready"
+      }
+    },
+    {
+      "name": "hybrid_fallback_local_unavailable",
+      "descriptor": {
+        "id": "sample-hybrid",
+        "displayName": "Sample Hybrid",
+        "sourceModes": ["auto", "cli", "api"],
+        "preferredSourcePolicy": "local_first"
+      },
+      "settings": {
+        "source": "local_cli"
+      },
+      "provider": {
+        "id": "sample-hybrid",
+        "displayName": "Sample Hybrid",
+        "installed": true,
+        "authenticated": false,
+        "source": "api",
+        "error": "Auth required"
+      },
+      "expect": {
+        "canonicalMode": "hybrid",
+        "sourceModeLabel": "Hybrid (local-first)",
+        "activeSourceLabel": "Active API",
+        "sourceStatusLabel": "Status: Fallback",
+        "fallbackLabel": "Fallback local unavailable"
+      }
+    },
+    {
+      "name": "api_provider_unavailable",
+      "descriptor": {
+        "id": "sample-api",
+        "displayName": "Sample API",
+        "sourceModes": ["api"],
+        "preferredSourcePolicy": "api_first"
+      },
+      "settings": {},
+      "provider": {
+        "id": "sample-api",
+        "displayName": "Sample API",
+        "installed": false,
+        "authenticated": false,
+        "source": "api"
+      },
+      "expect": {
+        "canonicalMode": "unavailable",
+        "sourceModeLabel": "Unavailable",
+        "activeSourceLabel": "Active API",
+        "sourceStatusLabel": "Status: Unavailable"
+      }
+    }
+  ]
+}

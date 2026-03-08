@@ -1,0 +1,55 @@
+.ai-usage-pref-compact-row {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.ai-usage-overview-selection-row {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.ai-usage-overview-selection-box {
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.ai-usage-overview-grid {
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.ai-usage-overview-check {
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+.ai-usage-provider-expander {
+    margin-top: 1px;
+    margin-bottom: 1px;
+}
+
+.ai-usage-provider-field {
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+.ai-usage-source-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid alpha(@theme_fg_color, 0.16);
+    background-color: alpha(@theme_selected_bg_color, 0.18);
+    color: @theme_fg_color;
+}
+
+.ai-usage-source-badge-secondary {
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid alpha(@theme_fg_color, 0.10);
+    background-color: alpha(@theme_fg_color, 0.04);
+    color: alpha(@theme_fg_color, 0.85);
+}
+
+.ai-usage-actions-row {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}

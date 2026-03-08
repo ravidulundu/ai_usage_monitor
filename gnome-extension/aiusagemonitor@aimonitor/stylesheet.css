@@ -1,127 +1,422 @@
 /* AI Usage Monitor Styles */
 
-.ai-usage-content-box {
-    padding: 8px 10px 10px 10px;
+@define-color ai_surface alpha(@theme_bg_color, 0.86);
+@define-color ai_surface_compact alpha(@theme_bg_color, 0.56);
+@define-color ai_separator alpha(@theme_fg_color, 0.08);
+@define-color ai_text_muted alpha(@theme_fg_color, 0.70);
+@define-color ai_text_meta alpha(@theme_fg_color, 0.64);
+@define-color ai_accent @theme_selected_bg_color;
+@define-color ai_accent_text @theme_selected_fg_color;
+@define-color ai_warn mix(@theme_selected_bg_color, @theme_fg_color, 0.46);
+@define-color ai_error mix(@theme_selected_bg_color, @theme_fg_color, 0.18);
+
+.ai-usage-menu-header {
+    padding: 5px 8px 3px 8px;
+}
+
+.ai-usage-menu-header-title {
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .ai-usage-switcher-box {
-    padding: 0 10px 6px 10px;
+    padding: 6px 8px 4px 8px;
+    spacing: 3px;
 }
 
-.ai-usage-panel-label {
-    font-size: 11px;
-    font-weight: bold;
+.ai-usage-switcher-row,
+.ai-usage-tabs-row {
+    spacing: 3px;
+}
+
+.ai-usage-switcher-button,
+.ai-usage-tab-button {
+    min-height: 21px;
+    padding: 2px 6px;
+    border-radius: 7px;
+    background-color: transparent;
+    border: 1px solid transparent;
+}
+
+.ai-usage-switcher-button.active,
+.ai-usage-tab-button.active {
+    background-color: alpha(@ai_accent, 0.20);
+    border-color: alpha(@ai_accent, 0.34);
+    color: @ai_accent;
+}
+
+.ai-usage-switcher-button.unavailable {
+    opacity: 0.55;
+}
+
+.ai-usage-tab-content,
+.ai-usage-provider-tab-content {
+    spacing: 1px;
+}
+
+.ai-usage-tab-top,
+.ai-usage-provider-tab-top {
+    spacing: 2px;
+}
+
+.ai-usage-tab-icon {
+    icon-size: 11px;
+}
+
+.ai-usage-tab-badge {
+    min-width: 14px;
+    border-radius: 7px;
     padding: 0 4px;
-}
-
-.ai-usage-menu-header {
-    padding: 10px 12px 8px 12px;
-}
-
-.ai-usage-switcher-button {
-    margin-right: 6px;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.9);
-}
-
-.ai-usage-switcher-button.active {
-    background: rgba(255, 255, 255, 0.16);
-}
-
-.ai-usage-provider-card {
-    padding: 10px 12px;
-    margin-bottom: 10px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.ai-usage-provider-card.compact {
-    padding: 8px 10px;
-    margin-bottom: 8px;
-    border-radius: 14px;
-}
-
-.ai-usage-provider-header {
-    margin-bottom: 8px;
-}
-
-.ai-usage-provider-icon {
-    margin-right: 6px;
-}
-
-.ai-usage-provider-badge {
-    min-width: 22px;
-    min-height: 22px;
-    padding: 2px 0;
-    margin-right: 6px;
-    border-radius: 999px;
-    color: #ffffff;
-    font-size: 10px;
+    background-color: alpha(@ai_accent, 0.22);
+    color: @ai_accent_text;
+    font-size: 8px;
     font-weight: 700;
     text-align: center;
 }
 
-.ai-usage-provider-title {
-    font-size: 11px;
+.ai-usage-tab-label {
+    font-size: 10px;
+}
+
+.ai-usage-tab-label.muted {
+    color: @ai_text_meta;
+}
+
+.ai-usage-tab-mini-line {
+    margin-top: 1px;
+}
+
+.ai-usage-tab-mini-line.tone-accent {
+    color: @ai_accent;
+}
+
+.ai-usage-tab-mini-line.tone-muted {
+    color: @ai_text_muted;
+}
+
+.ai-usage-tab-mini-line.tone-disabled {
+    color: alpha(@theme_fg_color, 0.40);
+}
+
+.ai-usage-content-box {
+    min-width: 340px;
+    padding: 0 8px 8px 8px;
+    spacing: 5px;
+}
+
+.ai-usage-provider-detail-section {
+    padding: 0;
+    border-radius: 0;
+    background-color: transparent;
+    border: none;
+}
+
+.ai-usage-overview-card {
+    padding: 6px 8px;
+    border-radius: 9px;
+    background-color: @ai_surface_compact;
+    border: 1px solid @ai_separator;
+}
+
+.ai-usage-header-section,
+.ai-usage-provider-header {
+    spacing: 1px;
+}
+
+.ai-usage-header-title-row {
+    spacing: 3px;
+}
+
+.ai-usage-provider-title-large {
+    font-size: 12px;
     font-weight: 700;
+}
+
+.ai-usage-provider-plan-label {
+    font-size: 10px;
+    color: @ai_text_muted;
+}
+
+.ai-usage-provider-updated {
+    font-size: 10px;
+    color: @ai_text_muted;
+}
+
+.ai-usage-source-row,
+.ai-usage-provider-header-source-row {
+    spacing: 4px;
+}
+
+.ai-usage-source-pill {
+    border-radius: 999px;
+    padding: 1px 6px;
+    font-size: 9px;
+}
+
+.ai-usage-source-pill-mode {
+    background-color: alpha(@ai_accent, 0.20);
+    border: 1px solid alpha(@ai_accent, 0.34);
+    color: @ai_accent;
+}
+
+.ai-usage-source-pill-active {
+    background-color: alpha(@theme_fg_color, 0.08);
+    border: 1px solid alpha(@theme_fg_color, 0.12);
+    color: @ai_text_meta;
+}
+
+.ai-usage-source-pill-status {
+    background-color: alpha(@theme_fg_color, 0.06);
+    border: 1px solid alpha(@theme_fg_color, 0.10);
+    color: @ai_text_muted;
 }
 
 .ai-usage-provider-subtitle {
     font-size: 10px;
-    color: rgba(255, 255, 255, 0.55);
+    color: @ai_text_meta;
+}
+
+.ai-usage-provider-source-details {
+    font-size: 10px;
+    color: @ai_text_meta;
+}
+
+.ai-usage-provider-status-row,
+.ai-usage-provider-header-status-row {
+    spacing: 4px;
+}
+
+.ai-usage-provider-status-pill {
+    border-radius: 999px;
+    padding: 1px 6px;
+    font-size: 9px;
+    background-color: alpha(@theme_fg_color, 0.08);
+    border: 1px solid alpha(@theme_fg_color, 0.14);
+    color: @ai_text_meta;
+}
+
+.ai-usage-provider-status-pill.ai-tone-warn {
+    color: @ai_warn;
+    border-color: alpha(@ai_warn, 0.34);
+    background-color: alpha(@ai_warn, 0.18);
+}
+
+.ai-usage-provider-status-pill.ai-tone-error {
+    color: @ai_error;
+    border-color: alpha(@ai_error, 0.34);
+    background-color: alpha(@ai_error, 0.18);
+}
+
+.ai-usage-provider-status-details {
+    font-size: 10px;
+    color: @ai_text_meta;
 }
 
 .ai-usage-error {
-    color: #ff7b7b;
+    margin-top: 1px;
+    color: @ai_error;
     font-size: 10px;
 }
 
-.ai-usage-muted-row {
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 10px;
-    margin-bottom: 4px;
-}
-
-.ai-usage-bar-container {
-    margin: 4px 0;
-}
-
-.ai-usage-bar-container.compact {
+.ai-usage-section-divider {
     margin: 2px 0;
+    background-color: @ai_separator;
 }
 
-.ai-usage-bar-label {
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.55);
-    min-width: 54px;
+.ai-usage-switching-section {
+    spacing: 1px;
 }
 
-.ai-usage-bar-label.compact {
-    min-width: 42px;
-}
-
-.ai-usage-bar-value {
+.ai-usage-switching-title {
     font-size: 11px;
     font-weight: 700;
-    min-width: 38px;
 }
 
-.ai-usage-bar-value.compact {
+.ai-usage-switching-message {
     font-size: 10px;
-    min-width: 34px;
+    color: @ai_text_meta;
 }
 
-.ai-usage-bar-reset {
+.ai-usage-metric-row {
+    spacing: 1px;
+}
+
+.ai-usage-metric-row.tone-error .ai-usage-metric-secondary {
+    color: @ai_error;
+}
+
+.ai-usage-metric-row.tone-warn .ai-usage-metric-secondary {
+    color: @ai_warn;
+}
+
+.ai-usage-metrics-section {
+    spacing: 0;
+}
+
+.ai-usage-metric-title {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ai-usage-progress-line {
+    margin: 0;
+}
+
+.ai-usage-progress-line.tone-accent {
+    color: @ai_accent;
+}
+
+.ai-usage-progress-line.tone-warn {
+    color: @ai_warn;
+}
+
+.ai-usage-progress-line.tone-error {
+    color: @ai_error;
+}
+
+.ai-usage-progress-line.tone-muted {
+    color: @ai_text_muted;
+}
+
+.ai-usage-metric-meta-row {
+    spacing: 2px;
+}
+
+.ai-usage-metric-left {
     font-size: 10px;
-    color: rgba(255, 255, 255, 0.55);
-    min-width: 66px;
 }
 
-.ai-usage-bar-reset.compact {
-    min-width: 58px;
+.ai-usage-metric-right {
+    font-size: 10px;
+    color: @ai_text_meta;
+}
+
+.ai-usage-metric-secondary {
+    font-size: 10px;
+    color: @ai_text_meta;
+}
+
+.ai-usage-extra-usage-section {
+    spacing: 1px;
+}
+
+.ai-usage-cost-section {
+    spacing: 1px;
+}
+
+.ai-usage-block-title {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+.ai-usage-data-row {
+    spacing: 0px;
+    margin: 0;
+}
+
+.ai-usage-data-value-row {
+    spacing: 3px;
+}
+
+.ai-usage-data-value {
+    font-size: 10px;
+}
+
+.ai-usage-data-meta {
+    font-size: 10px;
+    color: @ai_text_meta;
+}
+
+.ai-usage-action-list {
+    spacing: 1px;
+}
+
+.ai-usage-actions-section {
+    spacing: 1px;
+}
+
+.ai-usage-action-button {
+    min-height: 19px;
+    padding: 0 2px;
+    border-radius: 5px;
+    background-color: transparent;
+    border: 1px solid transparent;
+}
+
+.ai-usage-action-button:hover {
+    background-color: alpha(@ai_accent, 0.10);
+    border-color: @ai_separator;
+}
+
+.ai-usage-action-button.disabled {
+    opacity: 0.45;
+}
+
+.ai-usage-action-row {
+    spacing: 4px;
+}
+
+.ai-usage-action-icon {
+    icon-size: 13px;
+}
+
+.ai-usage-action-label {
+    font-size: 10px;
+}
+
+.ai-usage-overview-section {
+    spacing: 6px;
+}
+
+.ai-usage-overview-button {
+    background-color: transparent;
+    border: none;
+}
+
+.ai-usage-overview-header {
+    spacing: 4px;
+    margin-bottom: 2px;
+}
+
+.ai-usage-overview-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ai-usage-overview-plan {
+    font-size: 10px;
+    color: @ai_text_meta;
+}
+
+.ai-usage-overview-metric-row {
+    spacing: 4px;
+    margin: 0;
+}
+
+.ai-usage-overview-metric-label {
+    min-width: 42px;
+    font-size: 10px;
+    color: @ai_text_muted;
+}
+
+.ai-usage-overview-metric-value {
+    min-width: 28px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.ai-usage-empty-state-section {
+    padding: 12px 10px;
+    border-radius: 9px;
+    background-color: @ai_surface_compact;
+    border: 1px solid @ai_separator;
+}
+
+.ai-usage-empty-state-label {
+    text-align: center;
+    color: @ai_text_muted;
+    font-size: 11px;
 }
 
 .ai-usage-panel-tool-icon {
@@ -130,4 +425,37 @@
 
 .ai-usage-panel-ring {
     margin: 0 2px;
+}
+
+.ai-usage-panel-label {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 4px;
+}
+
+.ai-usage-panel-tool-fallback {
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+}
+
+.ai-usage-panel-label.ai-tone-accent,
+.ai-usage-panel-tool-fallback.ai-tone-accent {
+    color: @ai_accent;
+}
+
+.ai-usage-panel-label.ai-tone-warn,
+.ai-usage-panel-tool-fallback.ai-tone-warn {
+    color: @ai_warn;
+}
+
+.ai-usage-panel-label.ai-tone-error,
+.ai-usage-panel-tool-fallback.ai-tone-error {
+    color: @ai_error;
+}
+
+.ai-usage-panel-label.ai-tone-ok,
+.ai-usage-panel-tool-fallback.ai-tone-ok {
+    color: @ai_text_muted;
 }

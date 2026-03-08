@@ -13,8 +13,12 @@ class ProviderStateTests(unittest.TestCase):
             authenticated=True,
             status="ok",
             source="cli",
-            primary_metric=MetricWindow(label="5h", used_pct=42, reset_at="2026-03-07T15:00:00Z"),
-            secondary_metric=MetricWindow(label="7d", used_pct=61, reset_at="2026-03-10T00:00:00Z"),
+            primary_metric=MetricWindow(
+                label="5h", used_pct=42, reset_at="2026-03-07T15:00:00Z"
+            ),
+            secondary_metric=MetricWindow(
+                label="7d", used_pct=61, reset_at="2026-03-10T00:00:00Z"
+            ),
         )
 
         data = state.to_dict()

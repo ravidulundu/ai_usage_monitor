@@ -1,6 +1,10 @@
 import unittest
 
-from core.ai_usage_monitor.cookies import cookie_header_from_settings, cookie_source_from_settings, normalize_cookie_header
+from core.ai_usage_monitor.cookies import (
+    cookie_header_from_settings,
+    cookie_source_from_settings,
+    normalize_cookie_header,
+)
 
 
 class CookieHelperTests(unittest.TestCase):
@@ -11,7 +15,10 @@ class CookieHelperTests(unittest.TestCase):
         self.assertEqual(cookie_source_from_settings({}, default="off"), "off")
 
     def test_cookie_header_reads_settings(self):
-        self.assertEqual(cookie_header_from_settings({"manualCookieHeader": "session=abc"}), "session=abc")
+        self.assertEqual(
+            cookie_header_from_settings({"manualCookieHeader": "session=abc"}),
+            "session=abc",
+        )
 
 
 if __name__ == "__main__":

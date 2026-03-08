@@ -22,7 +22,9 @@ class CollectorShapeTests(unittest.TestCase):
         self.assertIn("minimax", registry.list_ids())
 
     def test_app_state_serializes_top_level_fields(self):
-        payload = AppState(providers=[ProviderState(id="codex", display_name="OpenAI Codex")]).to_dict()
+        payload = AppState(
+            providers=[ProviderState(id="codex", display_name="OpenAI Codex")]
+        ).to_dict()
 
         self.assertEqual(payload["version"], 1)
         self.assertIn("updatedAt", payload)

@@ -5,9 +5,10 @@
 WIDGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WIDGET_ID="com.aiusagemonitor"
 ICON_NAME="com.aiusagemonitor"
-ICON_SRC="$WIDGET_DIR/contents/images/plasmoid_mainview.png"
-ICON_DEST_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-ICON_DEST="$ICON_DEST_DIR/$ICON_NAME.png"
+ICON_SRC="$WIDGET_DIR/contents/images/screeps-svgrepo-com.svg"
+ICON_DEST_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+ICON_DEST="$ICON_DEST_DIR/$ICON_NAME.svg"
+LEGACY_ICON_DEST="$HOME/.local/share/icons/hicolor/256x256/apps/$ICON_NAME.png"
 SHARED_CORE_DIR="$HOME/.local/share/ai-usage-monitor"
 REPO_ROOT="$(cd "$WIDGET_DIR/.." && pwd)"
 
@@ -21,13 +22,12 @@ cp -r "$REPO_ROOT/core" "$SHARED_CORE_DIR/core"
 kpackagetool6 --type Plasma/Applet --remove "$WIDGET_ID" 2>/dev/null || true
 
 # Install fresh
-kpackagetool6 --type Plasma/Applet --install "$WIDGET_DIR"
-
-if [ $? -eq 0 ]; then
-    # Install custom icon so Widget Explorer shows this plasmoid image
+if kpackagetool6 --type Plasma/Applet --install "$WIDGET_DIR"; then
+    # Install the project icon so Widget Explorer uses the intended SVG.
     if [ -f "$ICON_SRC" ]; then
         mkdir -p "$ICON_DEST_DIR"
         cp -f "$ICON_SRC" "$ICON_DEST"
+        rm -f "$LEGACY_ICON_DEST"
         # Refresh icon/services cache if tools exist
         command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
     fi

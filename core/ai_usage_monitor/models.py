@@ -53,6 +53,7 @@ class ProviderState:
     primary_metric: MetricWindow | None = None
     secondary_metric: MetricWindow | None = None
     local_usage: LocalUsageSnapshot | None = None
+    source_model: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     extras: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
@@ -67,9 +68,14 @@ class ProviderState:
             "authenticated": self.authenticated,
             "status": self.status,
             "source": self.source,
-            "primaryMetric": self.primary_metric.to_dict() if self.primary_metric else None,
-            "secondaryMetric": self.secondary_metric.to_dict() if self.secondary_metric else None,
+            "primaryMetric": self.primary_metric.to_dict()
+            if self.primary_metric
+            else None,
+            "secondaryMetric": self.secondary_metric.to_dict()
+            if self.secondary_metric
+            else None,
             "localUsage": self.local_usage.to_dict() if self.local_usage else None,
+            "sourceModel": self.source_model,
             "metadata": self.metadata,
             "extras": self.extras,
             "error": self.error,
@@ -80,6 +86,7 @@ class ProviderState:
 @dataclass
 class AppState:
     providers: list[ProviderState]
+    overview_provider_ids: list[str] = field(default_factory=list)
     version: int = 1
     updated_at: str = field(default_factory=iso_now)
 
@@ -87,5 +94,6 @@ class AppState:
         return {
             "version": self.version,
             "updatedAt": self.updated_at,
+            "overviewProviderIds": list(self.overview_provider_ids),
             "providers": [provider.to_dict() for provider in self.providers],
         }

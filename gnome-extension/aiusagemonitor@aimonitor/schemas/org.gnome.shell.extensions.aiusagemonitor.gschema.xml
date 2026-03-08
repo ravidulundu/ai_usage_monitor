@@ -9,9 +9,9 @@
     </key>
 
     <key name="panel-tool" type="s">
-      <default>'claude'</default>
+      <default>'auto'</default>
       <summary>Tool to show in panel</summary>
-      <description>Which AI tool to display in the panel (claude, codex, or gemini)</description>
+      <description>Which AI tool to display in the panel or auto-select the best available provider</description>
     </key>
 
     <key name="panel-display-mode" type="i">

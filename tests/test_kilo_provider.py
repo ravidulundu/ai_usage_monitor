@@ -20,8 +20,32 @@ class KiloProviderTests(unittest.TestCase):
 
     def test_parse_kilo_snapshot_extracts_credit_and_pass_fields(self):
         payload = [
-            {"result": {"data": {"json": {"creditBlocks": [{"amount_mUsd": 100000000, "balance_mUsd": 40000000}]}}}},
-            {"result": {"data": {"json": {"subscription": {"tier": "tier_49", "currentPeriodUsageUsd": 12, "currentPeriodBaseCreditsUsd": 20, "currentPeriodBonusCreditsUsd": 5, "nextBillingAt": "2026-04-01T00:00:00Z"}}}}},
+            {
+                "result": {
+                    "data": {
+                        "json": {
+                            "creditBlocks": [
+                                {"amount_mUsd": 100000000, "balance_mUsd": 40000000}
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "result": {
+                    "data": {
+                        "json": {
+                            "subscription": {
+                                "tier": "tier_49",
+                                "currentPeriodUsageUsd": 12,
+                                "currentPeriodBaseCreditsUsd": 20,
+                                "currentPeriodBonusCreditsUsd": 5,
+                                "nextBillingAt": "2026-04-01T00:00:00Z",
+                            }
+                        }
+                    }
+                }
+            },
             {"result": {"data": {"json": {"enabled": True, "paymentMethod": "visa"}}}},
         ]
 

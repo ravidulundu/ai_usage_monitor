@@ -5,6 +5,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from core.ai_usage_monitor.models import MetricWindow, ProviderState
 from core.ai_usage_monitor.providers.base import ProviderBranding, ProviderDescriptor
@@ -47,8 +48,8 @@ def _base_paths() -> list[Path]:
     ]
 
 
-def detect_installed_ides() -> list[dict]:
-    detected = []
+def detect_installed_ides() -> list[dict[str, Any]]:
+    detected: list[dict[str, Any]] = []
     for base in _base_paths():
         if not base.exists():
             continue
@@ -60,7 +61,7 @@ def detect_installed_ides() -> list[dict]:
             for prefix, display_name in IDE_PATTERNS:
                 if not lower.startswith(prefix.lower()):
                     continue
-                version = dirname[len(prefix):] or "Unknown"
+                version = dirname[len(prefix) :] or "Unknown"
                 quota_file = child / "options" / "AIAssistantQuotaManager2.xml"
                 if quota_file.exists():
                     detected.append(
@@ -80,7 +81,7 @@ def decode_html_entities(text: str) -> str:
     return html.unescape(text.replace("&#10;", "\n"))
 
 
-def _parse_date(value: str | None):
+def _parse_date(value: str | None) -> str | None:
     if not value:
         return None
     try:
@@ -89,10 +90,14 @@ def _parse_date(value: str | None):
         return None
 
 
-def parse_jetbrains_xml(xml_text: str, detected_ide: dict | None = None) -> dict:
+def parse_jetbrains_xml(
+    xml_text: str, detected_ide: dict[str, Any] | None = None
+) -> dict[str, Any]:
     quota_match = re.search(r'name="quotaInfo"\s+value="([^"]+)"', xml_text)
     if not quota_match:
-        raise ValueError("No quota information found in the JetBrains AI configuration.")
+        raise ValueError(
+            "No quota information found in the JetBrains AI configuration."
+        )
     quota_info = json.loads(decode_html_entities(quota_match.group(1)))
 
     refill_info = None
@@ -107,7 +112,9 @@ def parse_jetbrains_xml(xml_text: str, detected_ide: dict | None = None) -> dict
     maximum = float(quota_info.get("maximum") or 0)
     tariff_quota = quota_info.get("tariffQuota") or {}
     available = float(tariff_quota.get("available") or max(0, maximum - current))
-    used_percent = 0.0 if maximum <= 0 else min(100.0, max(0.0, (current / maximum) * 100.0))
+    used_percent = (
+        0.0 if maximum <= 0 else min(100.0, max(0.0, (current / maximum) * 100.0))
+    )
     refill_at = _parse_date((refill_info or {}).get("next"))
 
     return {
@@ -117,14 +124,23 @@ def parse_jetbrains_xml(xml_text: str, detected_ide: dict | None = None) -> dict
         "available": available,
         "used_percent": used_percent,
         "refill_at": refill_at,
-        "ide_name": (detected_ide["name"] + " " + detected_ide["version"]) if detected_ide else None,
+        "ide_name": (detected_ide["name"] + " " + detected_ide["version"])
+        if detected_ide
+        else None,
     }
 
 
-def collect_jetbrains(settings: dict | None = None) -> tuple[dict, ProviderState]:
+def collect_jetbrains(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
     detected = detect_installed_ides()
     if not detected:
-        return {"installed": False}, ProviderState(id=DESCRIPTOR.id, display_name=DESCRIPTOR.display_name, installed=False, source="local")
+        return {"installed": False}, ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source="local",
+        )
 
     ide = detected[0]
     try:
@@ -143,12 +159,18 @@ def collect_jetbrains(settings: dict | None = None) -> tuple[dict, ProviderState
             installed=True,
             authenticated=True,
             source="local",
-            primary_metric=MetricWindow("Current", parsed["used_percent"], parsed["refill_at"]),
+            primary_metric=MetricWindow(
+                "Current", parsed["used_percent"], parsed["refill_at"]
+            ),
             extras={"plan": parsed["quota_type"], "model": parsed["ide_name"]},
         )
         return legacy, state
     except Exception as err:
-        legacy = {"installed": True, "error": f"Could not parse JetBrains AI quota: {err}", "fail_reason": "parse_error"}
+        legacy = {
+            "installed": True,
+            "error": f"Could not parse JetBrains AI quota: {err}",
+            "fail_reason": "parse_error",
+        }
         state = ProviderState(
             id=DESCRIPTOR.id,
             display_name=DESCRIPTOR.display_name,

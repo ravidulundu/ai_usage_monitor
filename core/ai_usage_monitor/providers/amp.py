@@ -4,33 +4,69 @@ import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from typing import Any, TypedDict
 
 from core.ai_usage_monitor.browser_cookies import import_cookie_header
-from core.ai_usage_monitor.cookies import cookie_header_from_settings, cookie_source_from_settings
+from core.ai_usage_monitor.cookies import (
+    cookie_header_from_settings,
+    cookie_source_from_settings,
+)
 from core.ai_usage_monitor.models import MetricWindow, ProviderState
-from core.ai_usage_monitor.providers.base import ProviderBranding, ProviderConfigField, ProviderDescriptor
-from core.ai_usage_monitor.util import classify_exception_failure, classify_http_failure, read_http_error_body
+from core.ai_usage_monitor.providers.base import (
+    ProviderBranding,
+    ProviderConfigField,
+    ProviderDescriptor,
+)
+from core.ai_usage_monitor.shared.http_failures import (
+    classify_exception_failure,
+    classify_http_failure,
+    read_http_error_body,
+)
 
 
 DESCRIPTOR = ProviderDescriptor(
     id="amp",
     display_name="Amp",
+    short_name="Amp",
     default_enabled=True,
     source_modes=("web",),
     config_fields=(
-        ProviderConfigField("cookieSource", "Cookie Source", kind="choice", options=("off", "manual", "auto")),
-        ProviderConfigField("manualCookieHeader", "Manual Cookie Header", secret=True, placeholder="session=..."),
+        ProviderConfigField(
+            "cookieSource",
+            "Cookie Source",
+            kind="choice",
+            options=("off", "manual", "auto"),
+        ),
+        ProviderConfigField(
+            "manualCookieHeader",
+            "Manual Cookie Header",
+            secret=True,
+            placeholder="session=...",
+        ),
     ),
-    branding=ProviderBranding(icon_key="amp", asset_name="amp.svg", color="#DC2626", badge_text="AM"),
+    branding=ProviderBranding(
+        icon_key="amp", asset_name="amp.svg", color="#DC2626", badge_text="AM"
+    ),
+    status_page_url="https://status.ampcode.com/",
+    usage_dashboard_default_url="https://ampcode.com/",
+    usage_dashboard_by_source=(("web", "https://ampcode.com/"),),
+    preferred_source_policy="web_first",
 )
 
 
-def _first_capture(text: str, pattern: str, flags=0):
+class AmpUsagePayload(TypedDict):
+    quota: float
+    used: float
+    hourly_replenishment: float
+    window_hours: float | None
+
+
+def _first_capture(text: str, pattern: str, flags: int = 0) -> str | None:
     match = re.search(pattern, text, flags)
     return match.group(1).strip() if match else None
 
 
-def parse_amp_html(html: str) -> dict:
+def parse_amp_html(html: str) -> AmpUsagePayload:
     lower = html.lower()
     if "sign in" in lower or "log in" in lower or "/login" in lower:
         raise PermissionError("Not logged in to Amp. Please log in via ampcode.com.")
@@ -68,14 +104,16 @@ def parse_amp_html(html: str) -> dict:
                         break
         if end_index is None:
             continue
-        usage = html[brace_index:end_index + 1]
+        usage = html[brace_index : end_index + 1]
         break
 
     if usage is None:
         raise ValueError("Missing Amp Free usage data.")
 
-    def number(key):
-        raw = _first_capture(usage, rf"['\"]?{re.escape(key)}['\"]?\s*:\s*([0-9]+(?:\.[0-9]+)?)")
+    def number(key: str) -> float | None:
+        raw = _first_capture(
+            usage, rf"['\"]?{re.escape(key)}['\"]?\s*:\s*([0-9]+(?:\.[0-9]+)?)"
+        )
         return float(raw) if raw is not None else None
 
     quota = number("quota")
@@ -93,20 +131,36 @@ def parse_amp_html(html: str) -> dict:
     }
 
 
-def collect_amp(settings: dict | None = None) -> tuple[dict, ProviderState]:
+def collect_amp(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
     source = cookie_source_from_settings(settings, default="off")
     if source == "off":
-        return {"installed": False}, ProviderState(id=DESCRIPTOR.id, display_name=DESCRIPTOR.display_name, installed=False, source="web")
+        return {"installed": False}, ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source="web",
+        )
 
-    cookie_header = cookie_header_from_settings(settings, env_keys=("AMP_COOKIE_HEADER",))
+    cookie_header = cookie_header_from_settings(
+        settings, env_keys=("AMP_COOKIE_HEADER",)
+    )
     source_label = "manual"
     if not cookie_header and source == "auto":
-        result = import_cookie_header(domains=["ampcode.com", "www.ampcode.com"], cookie_names={"session"})
+        result = import_cookie_header(
+            domains=["ampcode.com", "www.ampcode.com"], cookie_names={"session"}
+        )
         if result:
             cookie_header = result.header
             source_label = result.source
     if not cookie_header:
-        return {"installed": False}, ProviderState(id=DESCRIPTOR.id, display_name=DESCRIPTOR.display_name, installed=False, source="web")
+        return {"installed": False}, ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source="web",
+        )
 
     try:
         req = urllib.request.Request(
@@ -128,7 +182,9 @@ def collect_amp(settings: dict | None = None) -> tuple[dict, ProviderState]:
         reset_at = None
         hourly = parsed["hourly_replenishment"]
         if hourly and used > 0:
-            reset_at = (datetime.now(timezone.utc) + timedelta(hours=(used / hourly))).isoformat()
+            reset_at = (
+                datetime.now(timezone.utc) + timedelta(hours=(used / hourly))
+            ).isoformat()
 
         legacy = {
             "installed": True,
@@ -152,10 +208,14 @@ def collect_amp(settings: dict | None = None) -> tuple[dict, ProviderState]:
     except PermissionError as err:
         legacy = {"installed": True, "error": str(err), "fail_reason": "auth_required"}
     except urllib.error.HTTPError as err:
-        legacy = {"installed": True, **classify_http_failure("amp", err.code, read_http_error_body(err))}
+        legacy = {
+            "installed": True,
+            **classify_http_failure("amp", err.code, read_http_error_body(err)),
+        }
     except Exception as err:
         legacy = {"installed": True, **classify_exception_failure(err)}
 
+    error_text = str(legacy.get("error") or "").strip() or None
     state = ProviderState(
         id=DESCRIPTOR.id,
         display_name=DESCRIPTOR.display_name,
@@ -163,6 +223,6 @@ def collect_amp(settings: dict | None = None) -> tuple[dict, ProviderState]:
         authenticated=legacy.get("fail_reason") != "auth_required",
         status="error",
         source="web",
-        error=legacy.get("error"),
+        error=error_text,
     )
     return legacy, state
