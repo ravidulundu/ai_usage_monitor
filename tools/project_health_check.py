@@ -85,6 +85,35 @@ def _resolve_tool(binary: str) -> str | None:
     return shutil.which(binary)
 
 
+def _resolve_qmllint() -> str | None:
+    for binary in ("qmllint", "qmllint6"):
+        resolved = shutil.which(binary)
+        if resolved:
+            return resolved
+
+    qtpaths = shutil.which("qtpaths6")
+    if qtpaths:
+        rc, out = _run([qtpaths, "--query", "QT_HOST_BINS"])
+        if rc == 0:
+            host_bins = out.strip()
+            if host_bins:
+                for binary in ("qmllint", "qmllint6"):
+                    candidate = Path(host_bins) / binary
+                    if candidate.exists() and candidate.is_file():
+                        return str(candidate)
+
+    for candidate in (
+        "/usr/lib/qt6/bin/qmllint",
+        "/usr/lib/qt6/bin/qmllint6",
+        "/usr/lib/qt/bin/qmllint",
+        "/usr/lib/qt/bin/qmllint6",
+    ):
+        path = Path(candidate)
+        if path.exists() and path.is_file():
+            return str(path)
+    return None
+
+
 def _python_executable() -> str:
     return _resolve_tool("python3") or _resolve_tool("python") or sys.executable
 
@@ -153,7 +182,7 @@ def check_qml_syntax(require_tool: bool) -> CheckResult:
     if not runner.exists():
         return _fail("qml-syntax", "tools/run_qmllint.sh is missing")
 
-    qmllint = shutil.which("qmllint") or shutil.which("qmllint6")
+    qmllint = _resolve_qmllint()
     if not qmllint and not require_tool:
         return _warn("qml-syntax", "qmllint not installed, skipping")
     if not qmllint:

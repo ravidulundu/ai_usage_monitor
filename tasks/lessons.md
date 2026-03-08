@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-03-08 - CI Fail Kök Nedenini Logdan Ayır
+
+- Review yorumları kapanmış olsa bile CI kırığı bağımsız olabilir; önce en güncel failing run logu okunmalı, varsayım yapılmamalı.
+- `qmllint` gibi Qt araçlarında sadece `command -v` yetmez; CI için `qtpaths6 --query QT_HOST_BINS` ve `/usr/lib/qt6/bin` fallback’i eklenmeli.
+- Shell scriptlerde `A && B || true` kalıbı shellcheck SC2015 üretir; davranışı koruyan açık `if` bloğuna çevirmek daha güvenli ve okunabilir.
+
 ## 2026-03-08 - Lint Coverage ve Baseline Guard Dürüstlüğü
 
 - GNOME lint target listesini elle yönetmek yerine extension klasöründen otomatik keşfetmek, yeni mixin/helper dosyalarının sessizce kapsam dışı kalmasını engelliyor.

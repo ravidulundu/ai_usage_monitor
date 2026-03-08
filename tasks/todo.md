@@ -1,5 +1,21 @@
 # TODO
 
+## 2026-03-08 - PR Review + CI Fix Round
+
+- [x] Copilot review yorumlarına karşılık gelen patchleri doğrula ve uygula
+- [x] Shellcheck SC2015 kırığını `install.sh` içinde güvenli if bloğuna çevir
+- [x] `qmllint` tespitini CI runner path farklılıklarına dayanıklı hale getir
+- [x] Quality workflow içinde Qt6 binary path'lerini `GITHUB_PATH` ile aç
+- [x] Doğrulama: `make lint`, `make typecheck`, `make health-ci PYTHON=python`
+
+### Review
+
+- CI kırığı iki kök nedenden geliyordu:
+  - `com.aiusagemonitor/install.sh` satırındaki SC2015 deseni
+  - bazı runner ortamlarında `qmllint` binary'sinin PATH dışında kalması
+- Uygulanan patch sonrası yerel strict kapı temiz:
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
 - [x] Audit: GNOME lint coverage dışı JS dosyaları var mı doğrula
 - [x] Audit: baseline lock altında kalan legacy büyük dosyaları ve görünürlük seviyesini doğrula
 - [x] Audit: KDE/GNOME settings source-status presentation tekrarlarını çıkar

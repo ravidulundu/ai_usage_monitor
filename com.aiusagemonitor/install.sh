@@ -28,8 +28,10 @@ if kpackagetool6 --type Plasma/Applet --install "$WIDGET_DIR"; then
         mkdir -p "$ICON_DEST_DIR"
         cp -f "$ICON_SRC" "$ICON_DEST"
         rm -f "$LEGACY_ICON_DEST"
-        # Refresh icon/services cache if tools exist
-        command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+        # Refresh icon/services cache if the tool exists.
+        if command -v kbuildsycoca6 >/dev/null 2>&1; then
+            kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+        fi
     fi
 
     echo ""
