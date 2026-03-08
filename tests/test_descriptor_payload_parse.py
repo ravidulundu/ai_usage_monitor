@@ -76,9 +76,12 @@ class DescriptorPayloadParseTests(unittest.TestCase):
                 mode_set = set(parsed["source_modes"])
                 self.assertEqual(
                     parsed["supports_local"],
-                    bool(mode_set.intersection({"cli", "local", "oauth"})),
+                    bool(mode_set.intersection({"cli", "local"})),
                 )
-                self.assertEqual(parsed["supports_api"], "api" in mode_set)
+                self.assertEqual(
+                    parsed["supports_api"],
+                    bool(mode_set.intersection({"api", "oauth"})),
+                )
                 self.assertEqual(
                     parsed["supports_web"],
                     bool(mode_set.intersection({"web", "remote"})),

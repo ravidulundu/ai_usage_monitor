@@ -56,13 +56,13 @@ function resolveSelectedProviderId(tabsModel, popupData, requestedId) {
 
     var vmSelectedId = popupData.selectedProviderId || ""
     if (vmSelectedId) {
-        for (i = 0; i < selectableTabs.length; i++) {
+        for (var i = 0; i < selectableTabs.length; i++) {
             if (selectableTabs[i].id === vmSelectedId)
                 return vmSelectedId
         }
     }
 
-    for (i = 0; i < selectableTabs.length; i++) {
+    for (var i = 0; i < selectableTabs.length; i++) {
         if (selectableTabs[i].kind === "provider")
             return selectableTabs[i].id
     }

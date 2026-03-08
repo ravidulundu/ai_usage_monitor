@@ -61,11 +61,10 @@ class ProviderRegistry:
                 },
                 "providerCapabilities": {
                     "supportsLocalCli": any(
-                        mode in {"cli", "local", "oauth"}
-                        for mode in descriptor.source_modes
+                        mode in {"cli", "local"} for mode in descriptor.source_modes
                     ),
                     "supportsApi": any(
-                        mode in {"api"} for mode in descriptor.source_modes
+                        mode in {"api", "oauth"} for mode in descriptor.source_modes
                     ),
                     "supportsWeb": any(
                         mode in {"web", "remote"} for mode in descriptor.source_modes

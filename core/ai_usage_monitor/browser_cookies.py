@@ -111,6 +111,8 @@ def _query_firefox(
             conn.close()
     except Exception:
         return None
+    finally:
+        shutil.rmtree(copied.parent, ignore_errors=True)
 
 
 def _query_chromium(
@@ -145,6 +147,8 @@ def _query_chromium(
             conn.close()
     except Exception:
         return None
+    finally:
+        shutil.rmtree(copied.parent, ignore_errors=True)
 
 
 def import_cookie_header(

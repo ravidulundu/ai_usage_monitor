@@ -85,12 +85,11 @@ def collect_openrouter(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
-        "HTTP-Referer": os.environ.get(
-            "OPENROUTER_HTTP_REFERER",
-            "https://github.com/osmandulundu/ai-usage-monitor",
-        ),
         "X-Title": os.environ.get("OPENROUTER_X_TITLE", "AI Usage Monitor"),
     }
+    http_referer = os.environ.get("OPENROUTER_HTTP_REFERER")
+    if http_referer:
+        headers["HTTP-Referer"] = http_referer
 
     try:
         credits_req = urllib.request.Request(f"{base_url}/credits", headers=headers)

@@ -61,24 +61,6 @@ def _api_url(settings: dict[str, Any] | None) -> str:
     )
 
 
-def _window_minutes(limit: dict[str, Any]) -> int | None:
-    unit = str(limit.get("timeUnit") or limit.get("unit") or "").lower()
-    number = limit.get("window") or limit.get("duration") or limit.get("time")
-    if not isinstance(number, (str, int, float)):
-        return None
-    try:
-        value = int(number)
-    except Exception:
-        return None
-    if unit.startswith("day"):
-        return value * 24 * 60
-    if unit.startswith("hour"):
-        return value * 60
-    if unit.startswith("minute"):
-        return value
-    return None
-
-
 def collect_zai(
     settings: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], ProviderState]:
