@@ -11,7 +11,9 @@ class APIProviderTests(unittest.TestCase):
         self.assertEqual(openrouter_base_url({}), "https://openrouter.ai/api/v1")
 
     def test_zai_api_url_defaults(self):
-        self.assertEqual(zai_api_url({}), "https://api.z.ai/api/monitor/usage/quota/limit")
+        self.assertEqual(
+            zai_api_url({}), "https://api.z.ai/api/monitor/usage/quota/limit"
+        )
 
     def test_warp_api_key_reads_settings(self):
         self.assertEqual(warp_api_key({"apiKey": "wk-test"}), "wk-test")

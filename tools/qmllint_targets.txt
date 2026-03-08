@@ -1,0 +1,2 @@
+# KDE plasmoid QML sources
+com.aiusagemonitor/contents/ui

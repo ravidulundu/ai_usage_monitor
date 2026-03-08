@@ -13,7 +13,9 @@ class JetBrainsProviderTests(unittest.TestCase):
   </component>
 </application>
 """
-        parsed = parse_jetbrains_xml(xml, detected_ide={"name": "PyCharm", "version": "2025.3"})
+        parsed = parse_jetbrains_xml(
+            xml, detected_ide={"name": "PyCharm", "version": "2025.3"}
+        )
 
         self.assertEqual(parsed["quota_type"], "Available")
         self.assertEqual(parsed["used_percent"], 25.0)

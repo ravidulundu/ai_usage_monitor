@@ -1,10 +1,15 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from core.ai_usage_monitor.local_usage import scan_claude_local_usage, scan_codex_local_usage
+from core.ai_usage_monitor.local_usage import (
+    scan_claude_local_usage,
+    scan_codex_local_usage,
+    scan_opencode_local_usage,
+)
 
 
 class LocalUsageTests(unittest.TestCase):
@@ -77,6 +82,127 @@ class LocalUsageTests(unittest.TestCase):
             self.assertIsNotNone(snapshot)
             self.assertEqual(snapshot.session_tokens, 44)
             self.assertEqual(snapshot.last_30_days_tokens, 44)
+
+    def test_scan_opencode_local_usage_tracks_latest_session_and_rolling_totals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".local" / "share" / "opencode" / "storage" / "message"
+            root.mkdir(parents=True)
+            now = datetime.now(timezone.utc)
+            t1 = int((now - timedelta(hours=4)).timestamp() * 1000)
+            t2 = int((now - timedelta(hours=2)).timestamp() * 1000)
+            t3 = int((now - timedelta(hours=1)).timestamp() * 1000)
+
+            rows = [
+                {
+                    "file": "m1.json",
+                    "payload": {
+                        "providerID": "opencode",
+                        "sessionID": "sess_a",
+                        "tokens": {
+                            "input": 10,
+                            "output": 5,
+                            "reasoning": 0,
+                            "cache": {"read": 2, "write": 0},
+                        },
+                        "time": {"completed": t1},
+                    },
+                },
+                {
+                    "file": "m2.json",
+                    "payload": {
+                        "providerID": "opencode",
+                        "sessionID": "sess_b",
+                        "tokens": {
+                            "input": 20,
+                            "output": 10,
+                            "reasoning": 5,
+                            "cache": {"read": 0, "write": 1},
+                        },
+                        "time": {"completed": t2},
+                    },
+                },
+                {
+                    "file": "m3.json",
+                    "payload": {
+                        "providerID": "opencode",
+                        "sessionID": "sess_b",
+                        "tokens": {
+                            "input": 4,
+                            "output": 6,
+                            "reasoning": 0,
+                            "cache": {"read": 1, "write": 0},
+                        },
+                        "time": {"completed": t3},
+                    },
+                },
+            ]
+
+            for row in rows:
+                (root / row["file"]).write_text(json.dumps(row["payload"]))
+
+            with mock.patch("pathlib.Path.home", return_value=Path(tmp)):
+                snapshot = scan_opencode_local_usage()
+
+            self.assertIsNotNone(snapshot)
+            self.assertEqual(snapshot.session_tokens, 47)
+            self.assertEqual(snapshot.last_30_days_tokens, 64)
+
+    def test_scan_opencode_local_usage_ignores_non_opencode_and_invalid_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".local" / "share" / "opencode" / "storage" / "message"
+            root.mkdir(parents=True)
+
+            (root / "invalid.json").write_text(
+                json.dumps({"providerID": "other", "tokens": {"input": 10}})
+            )
+            (root / "missing_completed.json").write_text(
+                json.dumps(
+                    {
+                        "providerID": "opencode",
+                        "sessionID": "sess_x",
+                        "tokens": {
+                            "input": 3,
+                            "output": 2,
+                            "reasoning": 0,
+                            "cache": {"read": 0, "write": 0},
+                        },
+                        "time": {},
+                    }
+                )
+            )
+
+            with mock.patch("pathlib.Path.home", return_value=Path(tmp)):
+                snapshot = scan_opencode_local_usage()
+
+            self.assertIsNone(snapshot)
+
+    def test_scan_opencode_local_usage_reads_config_fallback_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".config" / "opencode" / "storage" / "message"
+            root.mkdir(parents=True)
+            now = int(datetime.now(timezone.utc).timestamp() * 1000)
+            (root / "m1.json").write_text(
+                json.dumps(
+                    {
+                        "providerID": "opencode",
+                        "sessionID": "sess_cfg",
+                        "tokens": {
+                            "input": 7,
+                            "output": 3,
+                            "reasoning": 0,
+                            "cache": {"read": 0, "write": 0},
+                        },
+                        "time": {"completed": now},
+                    }
+                )
+            )
+
+            with mock.patch("pathlib.Path.home", return_value=Path(tmp)):
+                snapshot = scan_opencode_local_usage()
+
+            self.assertIsNotNone(snapshot)
+            self.assertEqual(snapshot.session_tokens, 10)
+            self.assertEqual(snapshot.last_30_days_tokens, 10)
 
 
 if __name__ == "__main__":

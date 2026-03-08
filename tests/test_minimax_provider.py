@@ -1,6 +1,9 @@
 import unittest
 
-from core.ai_usage_monitor.providers.minimax import parse_cookie_override, parse_minimax_payload
+from core.ai_usage_monitor.providers.minimax import (
+    parse_cookie_override,
+    parse_minimax_payload,
+)
 
 
 class MiniMaxProviderTests(unittest.TestCase):

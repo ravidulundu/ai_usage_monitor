@@ -16,7 +16,9 @@ def normalize_cookie_header(raw: str | None) -> str | None:
     return value or None
 
 
-def cookie_header_from_settings(settings: dict | None, env_keys: Iterable[str] = ()) -> str | None:
+def cookie_header_from_settings(
+    settings: dict | None, env_keys: Iterable[str] = ()
+) -> str | None:
     if settings:
         header = normalize_cookie_header(settings.get("manualCookieHeader"))
         if header:

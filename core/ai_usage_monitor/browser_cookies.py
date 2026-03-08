@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -31,9 +32,9 @@ def _copy_db(path: Path) -> Path | None:
         return None
 
 
-def _cookie_header_from_rows(rows) -> str | None:
-    pairs = []
-    seen = set()
+def _cookie_header_from_rows(rows: Iterable[tuple[str, str | None]]) -> str | None:
+    pairs: list[str] = []
+    seen: set[str] = set()
     for name, value in rows:
         if not name or value is None:
             continue
@@ -75,14 +76,16 @@ def _chromium_paths() -> list[tuple[str, Path]]:
     return paths
 
 
-def _query_firefox(db_path: Path, domains: list[str], cookie_names: set[str] | None):
+def _query_firefox(
+    db_path: Path, domains: list[str], cookie_names: set[str] | None
+) -> str | None:
     copied = _copy_db(db_path)
     if not copied:
         return None
     try:
         conn = sqlite3.connect(f"file:{copied}?mode=ro", uri=True)
         try:
-            rows = []
+            rows: list[tuple[str, str | None]] = []
             for domain in domains:
                 like = "%" + domain.lstrip(".")
                 if cookie_names:
@@ -95,22 +98,33 @@ def _query_firefox(db_path: Path, domains: list[str], cookie_names: set[str] | N
                 else:
                     query = "SELECT name, value FROM moz_cookies WHERE host LIKE ?"
                     params = [like]
-                rows.extend(conn.execute(query, params).fetchall())
+                fetched = conn.execute(query, params).fetchall()
+                for name, value in fetched:
+                    rows.append(
+                        (
+                            str(name),
+                            str(value) if value is not None else None,
+                        )
+                    )
             return _cookie_header_from_rows(rows)
         finally:
             conn.close()
     except Exception:
         return None
+    finally:
+        shutil.rmtree(copied.parent, ignore_errors=True)
 
 
-def _query_chromium(db_path: Path, domains: list[str], cookie_names: set[str] | None):
+def _query_chromium(
+    db_path: Path, domains: list[str], cookie_names: set[str] | None
+) -> str | None:
     copied = _copy_db(db_path)
     if not copied:
         return None
     try:
         conn = sqlite3.connect(f"file:{copied}?mode=ro", uri=True)
         try:
-            rows = []
+            rows: list[tuple[str, str | None]] = []
             for domain in domains:
                 like = "%" + domain.lstrip(".")
                 if cookie_names:
@@ -123,12 +137,18 @@ def _query_chromium(db_path: Path, domains: list[str], cookie_names: set[str] | 
                 else:
                     query = "SELECT name, value FROM cookies WHERE host_key LIKE ?"
                     params = [like]
-                rows.extend((name, value) for name, value in conn.execute(query, params).fetchall() if value)
+                fetched = conn.execute(query, params).fetchall()
+                for name, value in fetched:
+                    value_text = str(value) if value is not None else None
+                    if value_text:
+                        rows.append((str(name), value_text))
             return _cookie_header_from_rows(rows)
         finally:
             conn.close()
     except Exception:
         return None
+    finally:
+        shutil.rmtree(copied.parent, ignore_errors=True)
 
 
 def import_cookie_header(

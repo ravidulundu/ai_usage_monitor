@@ -90,6 +90,46 @@ Shared backend install location:
 - Status, auth, and error state rendering
 - Local-first operation
 
+## Development Quality Gates
+
+Developer onboarding ve kısa kurallar için:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+
+Install dev dependencies once:
+
+```bash
+make setup
+```
+
+Root commands:
+
+```bash
+make check        # full checks + tests
+make lint         # fast quality gates
+make typecheck    # mypy static type check for core
+make format       # apply Python formatting
+make format-check # formatting validation only
+make test         # pytest
+```
+
+Equivalent npm scripts:
+
+```bash
+npm run check
+npm run lint
+npm run typecheck
+npm run format
+npm run test
+```
+
+Pre-commit:
+
+```bash
+./.venv/bin/pre-commit install
+./.venv/bin/pre-commit run --all-files
+```
+
 ## Installation
 
 ### KDE Plasma 6

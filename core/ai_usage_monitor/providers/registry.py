@@ -8,7 +8,9 @@ from core.ai_usage_monitor.providers.codex import DESCRIPTOR as CODEX_DESCRIPTOR
 from core.ai_usage_monitor.providers.gemini import DESCRIPTOR as GEMINI_DESCRIPTOR
 from core.ai_usage_monitor.providers.kilo import DESCRIPTOR as KILO_DESCRIPTOR
 from core.ai_usage_monitor.providers.minimax import DESCRIPTOR as MINIMAX_DESCRIPTOR
-from core.ai_usage_monitor.providers.openrouter import DESCRIPTOR as OPENROUTER_DESCRIPTOR
+from core.ai_usage_monitor.providers.openrouter import (
+    DESCRIPTOR as OPENROUTER_DESCRIPTOR,
+)
 from core.ai_usage_monitor.providers.ollama import DESCRIPTOR as OLLAMA_DESCRIPTOR
 from core.ai_usage_monitor.providers.opencode import DESCRIPTOR as OPENCODE_DESCRIPTOR
 from core.ai_usage_monitor.providers.vertexai import DESCRIPTOR as VERTEXAI_DESCRIPTOR
@@ -16,7 +18,7 @@ from core.ai_usage_monitor.providers.zai import DESCRIPTOR as ZAI_DESCRIPTOR
 
 
 class ProviderRegistry:
-    def __init__(self):
+    def __init__(self) -> None:
         self._providers: dict[str, ProviderDescriptor] = {
             AMP_DESCRIPTOR.id: AMP_DESCRIPTOR,
             CLAUDE_DESCRIPTOR.id: CLAUDE_DESCRIPTOR,
@@ -44,8 +46,30 @@ class ProviderRegistry:
                 "id": descriptor.id,
                 "displayName": descriptor.display_name,
                 "shortName": descriptor.short_name or descriptor.display_name,
+                "iconKey": descriptor.branding.icon_key,
                 "defaultEnabled": descriptor.default_enabled,
+                "settingsAvailability": descriptor.settings_available,
+                "statusPageUrl": descriptor.status_page_url,
+                "usageDashboardUrl": descriptor.usage_dashboard_default_url,
+                "usageDashboardBySource": descriptor.usage_dashboard_map(),
                 "sourceModes": list(descriptor.source_modes),
+                "supportedSources": list(descriptor.source_modes),
+                "preferredSourcePolicy": descriptor.preferred_source_policy,
+                "fetchStrategy": {
+                    "supportsProbe": "auto" in descriptor.source_modes
+                    or "probe" in descriptor.source_modes,
+                },
+                "providerCapabilities": {
+                    "supportsLocalCli": any(
+                        mode in {"cli", "local"} for mode in descriptor.source_modes
+                    ),
+                    "supportsApi": any(
+                        mode in {"api", "oauth"} for mode in descriptor.source_modes
+                    ),
+                    "supportsWeb": any(
+                        mode in {"web", "remote"} for mode in descriptor.source_modes
+                    ),
+                },
                 "configFields": [field.to_dict() for field in descriptor.config_fields],
                 "branding": descriptor.branding.to_dict(),
             }

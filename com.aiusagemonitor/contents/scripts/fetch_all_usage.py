@@ -16,7 +16,8 @@ def candidate_roots(script_path: Path | None = None) -> tuple[Path, ...]:
 
 
 def extend_sys_path(script_path: Path | None = None) -> None:
-    for candidate in candidate_roots(script_path):
+    # Keep the declared priority order: bundled -> repo -> shared.
+    for candidate in reversed(candidate_roots(script_path)):
         if (candidate / "core" / "ai_usage_monitor").exists():
             candidate_str = str(candidate)
             if candidate_str not in sys.path:

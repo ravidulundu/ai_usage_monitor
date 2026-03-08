@@ -12,7 +12,8 @@ def extend_sys_path() -> None:
     repo_root = script_path.parents[3]
     shared_root = Path.home() / ".local" / "share" / "ai-usage-monitor"
 
-    for candidate in (repo_root, shared_root):
+    # Keep declared priority order: repo -> shared.
+    for candidate in reversed((repo_root, shared_root)):
         if (candidate / "core" / "ai_usage_monitor").exists():
             candidate_str = str(candidate)
             if candidate_str not in sys.path:

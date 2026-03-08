@@ -9,9 +9,7 @@ echo "Upgrading AI Usage Monitor..."
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Upgrade the widget
-kpackagetool6 --type Plasma/Applet --upgrade "$DIR"
-
-if [ $? -eq 0 ]; then
+if kpackagetool6 --type Plasma/Applet --upgrade "$DIR"; then
     echo "✓ Widget upgraded successfully"
     echo ""
     echo "Restarting Plasma Shell to apply changes..."

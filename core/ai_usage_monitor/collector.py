@@ -1,80 +1,43 @@
 from __future__ import annotations
 
-from core.ai_usage_monitor.config import load_config, provider_settings_map
-from core.ai_usage_monitor.models import AppState, ProviderState
-from core.ai_usage_monitor.providers.registry import ProviderRegistry
-from core.ai_usage_monitor.providers import (
-    collect_amp,
-    collect_claude,
-    collect_copilot,
-    collect_codex,
-    collect_gemini,
-    collect_kilo,
-    collect_minimax,
-    collect_openrouter,
-    collect_ollama,
-    collect_opencode,
-    collect_vertexai,
-    collect_zai,
+from core.ai_usage_monitor.collector_helpers import (
+    build_provider_records,
+    changed_provider_ids,
+    refresh_changed_provider_records,
 )
+from core.ai_usage_monitor.config import load_config, provider_settings_map
+from core.ai_usage_monitor.identity import load_identity_store, save_identity_store
+from core.ai_usage_monitor.models import AppState
+from core.ai_usage_monitor.presentation import build_popup_view_model
+from core.ai_usage_monitor.providers.fetch_strategies import fetcher_map
+from core.ai_usage_monitor.providers.registry import ProviderRegistry
 
 
-COLLECTORS = {
-    "amp": collect_amp,
-    "claude": collect_claude,
-    "codex": collect_codex,
-    "gemini": collect_gemini,
-    "copilot": collect_copilot,
-    "vertexai": collect_vertexai,
-    "openrouter": collect_openrouter,
-    "ollama": collect_ollama,
-    "opencode": collect_opencode,
-    "zai": collect_zai,
-    "kilo": collect_kilo,
-    "minimax": collect_minimax,
-}
+# Backward-compatible alias used by tests that patch collector mappings.
+COLLECTORS = fetcher_map()
 
 
-def _disabled_provider_state(provider_id, descriptor, settings) -> ProviderState:
-    return ProviderState(
-        id=provider_id,
-        display_name=descriptor.display_name if descriptor else provider_id,
-        enabled=False,
-        installed=False,
-        authenticated=False,
-        status="disabled",
-        source=str(settings.get("source", descriptor.source_modes[0] if descriptor else "auto")),
-        metadata={},
-    )
-
-
-def collect_all():
+def collect_all() -> tuple[dict[str, dict], AppState]:
     config = load_config()
     settings_map = provider_settings_map(config)
-    descriptors = {descriptor.id: descriptor for descriptor in ProviderRegistry().list_descriptors()}
-    legacy = {}
-    state = []
-    for provider_id, collector in COLLECTORS.items():
-        settings = settings_map.get(provider_id, {})
-        descriptor = descriptors.get(provider_id)
-        enabled = bool(settings.get("enabled", descriptor.default_enabled if descriptor else True))
+    identity_store = load_identity_store()
+    provider_records = build_provider_records(
+        registry=ProviderRegistry(),
+        settings_map=settings_map,
+        identity_store=identity_store,
+        collectors=COLLECTORS,
+    )
 
-        if enabled:
-            provider_legacy, provider_state = collector(settings)
-        else:
-            provider_legacy = {"installed": False, "enabled": False}
-            provider_state = _disabled_provider_state(provider_id, descriptor, settings)
+    changed_ids = changed_provider_ids(provider_records)
+    refresh_changed_provider_records(provider_records, changed_ids, identity_store)
 
-        provider_state.enabled = enabled
-        provider_state.metadata = dict(provider_state.metadata or {})
-        provider_state.metadata["configuredSource"] = str(
-            settings.get("source", descriptor.source_modes[0] if descriptor else provider_state.source or "auto")
-        )
-        if descriptor:
-            provider_state.metadata["branding"] = descriptor.branding.to_dict()
-        legacy[provider_id] = provider_legacy
-        state.append(provider_state)
-    return legacy, AppState(providers=state)
+    legacy = {record["provider_id"]: record["legacy"] for record in provider_records}
+    state = [record["state"] for record in provider_records]
+    save_identity_store(identity_store)
+    return legacy, AppState(
+        providers=state,
+        overview_provider_ids=list(config.get("overviewProviderIds") or []),
+    )
 
 
 def collect_legacy_usage() -> dict:
@@ -85,3 +48,14 @@ def collect_legacy_usage() -> dict:
 def collect_state_payload() -> dict:
     _, app_state = collect_all()
     return app_state.to_dict()
+
+
+def collect_popup_vm_payload(preferred_provider_id: str | None = None) -> dict:
+    config = load_config()
+    _, app_state = collect_all()
+    refresh_interval = int(config.get("refreshInterval") or 60)
+    return build_popup_view_model(
+        app_state,
+        refresh_interval_seconds=refresh_interval,
+        preferred_provider_id=preferred_provider_id,
+    )

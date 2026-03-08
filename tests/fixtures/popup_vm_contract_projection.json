@@ -1,0 +1,39 @@
+{
+  "selectedProviderId": "codex",
+  "enabledProviderIds": ["codex", "openrouter"],
+  "selectableProviderIds": ["codex", "openrouter"],
+  "overviewProviderIds": ["codex", "openrouter"],
+  "hasOverview": true,
+  "identityRefreshPending": true,
+  "tabs": [
+    {"id": "overview", "kind": "overview", "selected": false},
+    {"id": "codex", "kind": "provider", "selected": true},
+    {"id": "openrouter", "kind": "provider", "selected": false}
+  ],
+  "switcherTabs": [
+    {"id": "overview", "kind": "overview"},
+    {"id": "codex", "kind": "provider"},
+    {"id": "openrouter", "kind": "provider"}
+  ],
+  "panel": {
+    "providerId": "codex",
+    "tone": "ok",
+    "displayText": "21%"
+  },
+  "providers": [
+    {
+      "id": "codex",
+      "sourceMode": "cli",
+      "metricsKinds": ["session", "weekly"],
+      "switchingState": {"active": false, "kind": "identity"},
+      "actions": ["usage_dashboard", "status_page", "settings", "about", "quit"]
+    },
+    {
+      "id": "openrouter",
+      "sourceMode": "api",
+      "metricsKinds": ["session", "weekly"],
+      "switchingState": {"active": true, "kind": "source"},
+      "actions": ["usage_dashboard", "status_page", "settings", "about", "quit"]
+    }
+  ]
+}

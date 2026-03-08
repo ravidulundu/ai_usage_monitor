@@ -7,11 +7,20 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from core.ai_usage_monitor.local_usage import scan_vertex_local_usage
 from core.ai_usage_monitor.models import MetricWindow, ProviderState
-from core.ai_usage_monitor.providers.base import ProviderBranding, ProviderConfigField, ProviderDescriptor
-from core.ai_usage_monitor.util import classify_exception_failure, classify_http_failure, read_http_error_body
+from core.ai_usage_monitor.providers.base import (
+    ProviderBranding,
+    ProviderConfigField,
+    ProviderDescriptor,
+)
+from core.ai_usage_monitor.shared.http_failures import (
+    classify_exception_failure,
+    classify_http_failure,
+    read_http_error_body,
+)
 
 
 DESCRIPTOR = ProviderDescriptor(
@@ -23,7 +32,15 @@ DESCRIPTOR = ProviderDescriptor(
     config_fields=(
         ProviderConfigField("projectId", "Project ID", placeholder="my-gcp-project"),
     ),
-    branding=ProviderBranding(icon_key="vertexai", asset_name="vertexai.svg", color="#4285F4", badge_text="VA"),
+    branding=ProviderBranding(
+        icon_key="vertexai", asset_name="vertexai.svg", color="#4285F4", badge_text="VA"
+    ),
+    status_page_url="https://status.cloud.google.com/",
+    usage_dashboard_default_url="https://console.cloud.google.com/vertex-ai",
+    usage_dashboard_by_source=(
+        ("oauth", "https://console.cloud.google.com/vertex-ai"),
+    ),
+    preferred_source_policy="local_first",
 )
 
 
@@ -35,19 +52,21 @@ def _config_default_path() -> Path:
     return Path.home() / ".config" / "gcloud" / "configurations" / "config_default"
 
 
-def _load_adc() -> dict | None:
+def _load_adc() -> dict[str, Any] | None:
     path = _adc_path()
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text())
+        payload = json.loads(path.read_text())
+        return payload if isinstance(payload, dict) else None
     except Exception:
         return None
 
 
-def _project_id_from_sources(settings: dict | None = None) -> str | None:
-    if settings and isinstance(settings.get("projectId"), str) and settings.get("projectId").strip():
-        return settings.get("projectId").strip()
+def _project_id_from_sources(settings: dict[str, Any] | None = None) -> str | None:
+    project_id = (settings or {}).get("projectId")
+    if isinstance(project_id, str) and project_id.strip():
+        return project_id.strip()
     for env_key in ("GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"):
         value = os.environ.get(env_key)
         if value and value.strip():
@@ -64,12 +83,13 @@ def _project_id_from_sources(settings: dict | None = None) -> str | None:
         except Exception:
             pass
     adc = _load_adc() or {}
-    if isinstance(adc.get("quota_project_id"), str) and adc.get("quota_project_id").strip():
-        return adc.get("quota_project_id").strip()
+    quota_project = adc.get("quota_project_id")
+    if isinstance(quota_project, str) and quota_project.strip():
+        return quota_project.strip()
     return None
 
 
-def _access_token_from_adc(adc: dict) -> str | None:
+def _access_token_from_adc(adc: dict[str, Any]) -> str | None:
     token = adc.get("access_token")
     if isinstance(token, str) and token.strip():
         return token.strip()
@@ -77,7 +97,10 @@ def _access_token_from_adc(adc: dict) -> str | None:
     client_id = adc.get("client_id")
     client_secret = adc.get("client_secret")
     token_uri = adc.get("token_uri") or "https://oauth2.googleapis.com/token"
-    if not all(isinstance(value, str) and value for value in (refresh_token, client_id, client_secret)):
+    if not all(
+        isinstance(value, str) and value
+        for value in (refresh_token, client_id, client_secret)
+    ):
         return None
     data = urllib.parse.urlencode(
         {
@@ -87,7 +110,11 @@ def _access_token_from_adc(adc: dict) -> str | None:
             "grant_type": "refresh_token",
         }
     ).encode()
-    req = urllib.request.Request(token_uri, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    req = urllib.request.Request(
+        token_uri,
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
     with urllib.request.urlopen(req, timeout=10) as resp:
         payload = json.loads(resp.read())
     token = payload.get("access_token")
@@ -96,34 +123,53 @@ def _access_token_from_adc(adc: dict) -> str | None:
     return None
 
 
-def _fetch_timeseries(access_token: str, project_id: str, metric: str) -> dict:
+def _fetch_timeseries(
+    access_token: str, project_id: str, metric: str
+) -> dict[str, Any]:
     url = (
         f"https://monitoring.googleapis.com/v3/projects/{project_id}/timeSeries"
         f"?filter={urllib.parse.quote(metric)}&view=FULL&pageSize=200"
     )
     req = urllib.request.Request(
         url,
-        headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        },
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read())
+        payload = json.loads(resp.read())
+    return payload if isinstance(payload, dict) else {}
 
 
-def _series_key(series: dict) -> tuple[str, str, str]:
-    metric_labels = (series.get("metric") or {}).get("labels") or {}
-    resource_labels = (series.get("resource") or {}).get("labels") or {}
+def _series_key(series: dict[str, Any]) -> tuple[str, str, str]:
+    metric_raw = series.get("metric")
+    metric = metric_raw if isinstance(metric_raw, dict) else {}
+    metric_labels_raw = metric.get("labels")
+    metric_labels = metric_labels_raw if isinstance(metric_labels_raw, dict) else {}
+    resource_raw = series.get("resource")
+    resource = resource_raw if isinstance(resource_raw, dict) else {}
+    resource_labels_raw = resource.get("labels")
+    resource_labels = (
+        resource_labels_raw if isinstance(resource_labels_raw, dict) else {}
+    )
     return (
-        metric_labels.get("quota_metric", ""),
-        metric_labels.get("limit_name", ""),
-        resource_labels.get("location", ""),
+        str(metric_labels.get("quota_metric") or ""),
+        str(metric_labels.get("limit_name") or ""),
+        str(resource_labels.get("location") or ""),
     )
 
 
-def _series_value(series: dict) -> float | None:
-    points = series.get("points") or []
+def _series_value(series: dict[str, Any]) -> float | None:
+    points_raw = series.get("points")
+    points = points_raw if isinstance(points_raw, list) else []
     if not points:
         return None
-    value = (points[0].get("value") or {})
+    first = points[0]
+    if not isinstance(first, dict):
+        return None
+    value_raw = first.get("value")
+    value = value_raw if isinstance(value_raw, dict) else {}
     for key in ("doubleValue", "int64Value"):
         raw = value.get(key)
         if raw is None:
@@ -135,10 +181,24 @@ def _series_value(series: dict) -> float | None:
     return None
 
 
-def _compute_highest_usage_percent(usage_payload: dict, limit_payload: dict) -> float | None:
-    usage_series = usage_payload.get("timeSeries") or []
-    limit_series = limit_payload.get("timeSeries") or []
-    limits = {_series_key(series): _series_value(series) for series in limit_series}
+def _compute_highest_usage_percent(
+    usage_payload: dict[str, Any], limit_payload: dict[str, Any]
+) -> float | None:
+    usage_raw = usage_payload.get("timeSeries")
+    usage_series = (
+        [item for item in usage_raw if isinstance(item, dict)]
+        if isinstance(usage_raw, list)
+        else []
+    )
+    limit_raw = limit_payload.get("timeSeries")
+    limit_series = (
+        [item for item in limit_raw if isinstance(item, dict)]
+        if isinstance(limit_raw, list)
+        else []
+    )
+    limits: dict[tuple[str, str, str], float | None] = {}
+    for series in limit_series:
+        limits[_series_key(series)] = _series_value(series)
     best = None
     for series in usage_series:
         key = _series_key(series)
@@ -151,14 +211,25 @@ def _compute_highest_usage_percent(usage_payload: dict, limit_payload: dict) -> 
     return best
 
 
-def collect_vertexai(settings: dict | None = None) -> tuple[dict, ProviderState]:
+def collect_vertexai(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
     adc = _load_adc()
     if not adc:
-        return {"installed": False}, ProviderState(id=DESCRIPTOR.id, display_name=DESCRIPTOR.display_name, installed=False, source="oauth")
+        return {"installed": False}, ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source="oauth",
+        )
 
     project_id = _project_id_from_sources(settings)
     if not project_id:
-        legacy = {"installed": True, "error": "No Google Cloud project configured.", "fail_reason": "invalid_credentials"}
+        legacy = {
+            "installed": True,
+            "error": "No Google Cloud project configured.",
+            "fail_reason": "invalid_credentials",
+        }
         state = ProviderState(
             id=DESCRIPTOR.id,
             display_name=DESCRIPTOR.display_name,
@@ -167,7 +238,7 @@ def collect_vertexai(settings: dict | None = None) -> tuple[dict, ProviderState]
             status="error",
             source="oauth",
             local_usage=scan_vertex_local_usage(),
-            error=legacy["error"],
+            error=str(legacy["error"]),
         )
         return legacy, state
 
@@ -185,6 +256,7 @@ def collect_vertexai(settings: dict | None = None) -> tuple[dict, ProviderState]
         legacy = {
             "installed": True,
             "project_id": project_id,
+            "account_id": project_id,
             "used_pct": round(highest) if highest is not None else None,
         }
         state = ProviderState(
@@ -193,25 +265,37 @@ def collect_vertexai(settings: dict | None = None) -> tuple[dict, ProviderState]
             installed=True,
             authenticated=True,
             source="oauth",
-            primary_metric=MetricWindow("Quota", highest or 0, None) if highest is not None else None,
+            primary_metric=MetricWindow("Quota", highest or 0, None)
+            if highest is not None
+            else None,
             local_usage=scan_vertex_local_usage(),
-            extras={"plan": project_id},
+            extras={
+                "plan": project_id,
+                "projectId": project_id,
+                "accountId": project_id,
+            },
         )
         return legacy, state
     except urllib.error.HTTPError as err:
-        legacy = {"installed": True, **classify_http_failure("vertexai", err.code, read_http_error_body(err))}
+        legacy = {
+            "installed": True,
+            **classify_http_failure("vertexai", err.code, read_http_error_body(err)),
+        }
     except Exception as err:
         legacy = {"installed": True, **classify_exception_failure(err)}
 
+    error_text = legacy.get("error")
     state = ProviderState(
         id=DESCRIPTOR.id,
         display_name=DESCRIPTOR.display_name,
         installed=True,
-        authenticated=legacy.get("fail_reason") != "auth_required",
+        authenticated=str(legacy.get("fail_reason") or "") != "auth_required",
         status="error",
         source="oauth",
         local_usage=scan_vertex_local_usage(),
-        error=legacy.get("error"),
-        extras={"plan": project_id} if project_id else {},
+        error=str(error_text) if error_text is not None else None,
+        extras={"plan": project_id, "projectId": project_id, "accountId": project_id}
+        if project_id
+        else {},
     )
     return legacy, state
