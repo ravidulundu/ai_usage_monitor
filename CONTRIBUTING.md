@@ -6,24 +6,24 @@
 make setup
 ```
 
-Bu komut şunları yapar:
+This command does the following:
 
-- `.venv` oluşturur (yoksa)
-- Python dev bağımlılıklarını kurar
-- Node bağımlılıklarını kurar (`npm ci`)
-- `pre-commit` hook’unu aktive eder
+- creates `.venv` (if missing)
+- installs Python dev dependencies
+- installs Node dependencies (`npm ci`)
+- installs the `pre-commit` hook
 
-## Günlük Komutlar
+## Daily Commands
 
 ```bash
-make format   # Python format uygular
-make lint     # hızlı kalite kapıları
-make typecheck # core Python için gerçek static type check (mypy)
+make format   # apply Python formatting
+make lint     # fast quality gates
+make typecheck # real static type check for Python core (mypy)
 make check    # full quality gates + pytest
-make test     # sadece test
+make test     # tests only
 ```
 
-Eşdeğer npm komutları:
+Equivalent npm commands:
 
 ```bash
 npm run format
@@ -35,62 +35,62 @@ npm run test
 
 ## Git Hook
 
-Kurulum:
+Install:
 
 ```bash
 make hooks-install
 ```
 
-Manuel tüm dosyaları çalıştırma:
+Run all files manually:
 
 ```bash
 make hooks-run
 ```
 
-## Kodlama Kuralları (Kısa)
+## Coding Rules (Short)
 
 1. Renderer purity
-- KDE/GNOME renderer katmanında iş kuralı yazma.
-- Renderer sadece `layout`, `style/theme binding`, `visibility binding`, `action dispatch`, `input behavior` yapar.
+- Do not put business logic in KDE/GNOME renderer layers.
+- Renderers only handle `layout`, `style/theme binding`, `visibility binding`, `action dispatch`, `input behavior`.
 
 2. Component boundaries
-- Büyük UI dosyalarını sorumluluğa göre böl.
-- Tek bileşen içinde hem data policy hem render üretme.
+- Split large UI files by responsibility.
+- Do not combine data policy and rendering in a single component.
 
 3. Provider/account/source state model
-- Account/source çözümü ve identity kararları sadece core’da üretilir.
-- Renderer sadece core’dan gelen canonical alanları tüketir.
+- Account/source resolution and identity decisions must be produced in core only.
+- Renderers must consume canonical fields from core only.
 
 4. File size discipline
-- Helper: ~50-120 satır hedefi.
-- UI component: ~80-200 satır hedefi.
-- Orchestration dosyası 250+ satır ise bölme planı aç.
+- Helper: target ~50-120 lines.
+- UI component: target ~80-200 lines.
+- If an orchestration file is 250+ lines, open a split/refactor plan.
 
 5. No duplicated presentation logic
-- Aynı metin/policy/fallback kuralını KDE ve GNOME’da ayrı ayrı yazma.
-- Popup/settings presentation semantiği core `presentation` katmanında tek kaynaktan gelmeli.
+- Do not duplicate text/policy/fallback rules across KDE and GNOME.
+- Popup/settings presentation semantics must come from one source in the core `presentation` layer.
 
-## PR Beklentisi
+## PR Expectations
 
-- Davranış değişikliği varsa test ekle.
-- `make health-ci` ve `make typecheck` yeşil olmadan PR açma.
-- Yeni kod, mevcut health guard’ları bypass etmemeli.
+- Add tests for behavior changes.
+- Do not open a PR unless `make health-ci` and `make typecheck` are green.
+- New code must not bypass existing health guards.
 
 ## Enforced Quality Gates (CI)
 
-CI aşağıdaki kapıları zorunlu uygular:
+CI enforces the following gates:
 
 - `python-syntax`, `js-syntax`, `qml-syntax`, `shellcheck`
 - `ruff-lint`, `ruff-format`
 - `gjs-lint`
 - `renderer-purity`
 - `debt-guardrails`
-- `size-complexity-warnings` (CI’da warning de fail olur)
+- `size-complexity-warnings` (in CI, warnings also fail)
 - `file-budgets`, `function-budgets`
 - `gnome-lifecycle-contract`, `kde-lifecycle-contract`
 - `mypy`, `pytest`
 
-Yerel CI eşdeğeri:
+Local CI equivalent:
 
 ```bash
 make health-ci
@@ -98,17 +98,17 @@ make health-ci
 
 ## Debt Prevention Rules (Hard)
 
-Bu repo’da aşağıdakiler yasak:
+The following are prohibited in this repo:
 
-1. Yeni baseline lock eklemek (`FILE_SIZE_BASELINE_REDUCTION_PLAN`, `PYTHON_FUNCTION_COMPLEXITY_BASELINES`).
-2. `mypy.ini` içinde `ignore_errors = True` override eklemek.
-3. Renderer içinde business/presentation policy metni üretmek.
+1. Adding new baseline locks (`FILE_SIZE_BASELINE_REDUCTION_PLAN`, `PYTHON_FUNCTION_COMPLEXITY_BASELINES`).
+2. Adding `ignore_errors = True` overrides in `mypy.ini`.
+3. Generating business/presentation policy text inside renderers.
 
-Yeni debt oluştuğunda yaklaşım:
+When new debt appears, use this approach:
 
-1. Önce split/refactor ile debt’i gerçek olarak düşür.
-2. Sonra `make health-ci`, `make typecheck`, ilgili testleri çalıştır.
-3. Baseline lock ile alarm susturma yapma.
+1. First, reduce debt with real split/refactor work.
+2. Then run `make health-ci`, `make typecheck`, and related tests.
+3. Do not silence alarms via baseline lock.
 
 ## Responsibility Boundaries
 
@@ -117,10 +117,10 @@ Yeni debt oluştuğunda yaklaşım:
 - KDE/GNOME: layout + render + dispatch + input behavior.
 
 2. Renderer purity:
-- Renderer sadece canonical payload alanlarını tüketir.
-- Reset/pace/source/fallback/visibility policy core’da üretilir.
+- Renderers consume canonical payload fields only.
+- Reset/pace/source/fallback/visibility policy is produced in core.
 
 3. Component/file discipline:
-- Helper: 50-120 satır.
-- UI component: 80-200 satır.
-- Orchestrator >250 satır veya büyük fonksiyon alarmdır, split edilmelidir.
+- Helper: 50-120 lines.
+- UI component: 80-200 lines.
+- Orchestrator >250 lines or oversized functions are alarms and must be split.
