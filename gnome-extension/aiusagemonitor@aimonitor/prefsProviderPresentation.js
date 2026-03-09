@@ -11,12 +11,6 @@ export function providerSubtitle(descriptor, providerState) {
     return `${sourceMode} source`;
 }
 
-export function humanizeReason(value) {
-    if (!value)
-        return '';
-    return String(value).replace(/_/g, ' ');
-}
-
 export function descriptorCapabilities(descriptor) {
     const sourceModes = Array.isArray(descriptor?.sourceModes) ? descriptor.sourceModes : [];
     return {
@@ -28,14 +22,27 @@ export function descriptorCapabilities(descriptor) {
 
 export function sourceModeOptions(descriptor) {
     const sourceModes = Array.isArray(descriptor?.sourceModes) ? [...descriptor.sourceModes] : [];
+    const ordered = [];
+    for (const mode of sourceModes) {
+        const normalized = String(mode || '').trim();
+        if (normalized && !ordered.includes(normalized))
+            ordered.push(normalized);
+    }
     const supportsLocal = sourceModes.some(mode => ['cli', 'local', 'oauth'].includes(mode));
     const supportsRemote = sourceModes.some(mode => ['api', 'web', 'remote'].includes(mode));
-    if (supportsLocal && supportsRemote && !sourceModes.includes('local_cli'))
-        sourceModes.unshift('local_cli');
-    return sourceModes;
+    if (supportsLocal && supportsRemote && !ordered.includes('local_cli'))
+        ordered.push('local_cli');
+    const autoIndex = ordered.indexOf('auto');
+    if (autoIndex > 0) {
+        ordered.splice(autoIndex, 1);
+        ordered.unshift('auto');
+    }
+    return ordered;
 }
 
 export function sourceModeDisplayLabel(mode) {
+    if (String(mode || '').toLowerCase() === 'auto')
+        return 'AUTO (RECOMMENDED)';
     if (String(mode || '').toLowerCase() === 'local_cli')
         return 'LOCAL-FIRST (CLI→API)';
     return String(mode || '').toUpperCase();
@@ -73,6 +80,8 @@ export function providerSourceModeLabel(descriptor, providerState) {
     if (sourceModel?.sourceLabel)
         return sourceModel.sourceLabel;
     const sourceModes = sourceModeOptions(descriptor);
+    if (sourceModes.includes('auto'))
+        return sourceModeDisplayLabel('auto');
     if (sourceModes.length > 0)
         return sourceModeDisplayLabel(sourceModes[0]);
     return 'AUTO';

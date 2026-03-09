@@ -25,7 +25,7 @@ DESCRIPTOR = ProviderDescriptor(
     id="kilo",
     display_name="Kilo Code",
     short_name="Kilo",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("auto", "api", "cli"),
     config_fields=(
         ProviderConfigField("apiKey", "API Key", secret=True, placeholder="kilo_..."),
@@ -450,6 +450,42 @@ def _kilo_missing_credentials_response(
     )
 
 
+def _kilo_http_error_response(
+    *,
+    err: urllib.error.HTTPError,
+    source: str,
+) -> tuple[dict[str, Any], ProviderState]:
+    legacy = {
+        "installed": True,
+        **classify_http_failure("kilo", err.code, read_http_error_body(err)),
+    }
+    authenticated = str(legacy.get("fail_reason") or "") != "auth_required"
+    return _kilo_error_response(legacy, source=source, authenticated=authenticated)
+
+
+def _kilo_exception_response(
+    *,
+    err: Exception,
+    source: str,
+    authenticated: bool = True,
+) -> tuple[dict[str, Any], ProviderState]:
+    legacy = {"installed": True, **classify_exception_failure(err)}
+    return _kilo_error_response(legacy, source=source, authenticated=authenticated)
+
+
+def _fetch_kilo_with_source(
+    *,
+    token: str,
+    source: str,
+) -> tuple[KiloSnapshot | None, tuple[dict[str, Any], ProviderState] | None]:
+    try:
+        return _fetch_kilo(token), None
+    except urllib.error.HTTPError as err:
+        return None, _kilo_http_error_response(err=err, source=source)
+    except Exception as err:
+        return None, _kilo_exception_response(err=err, source=source)
+
+
 def _fetch_kilo_snapshot(
     source: str,
     selected_source: str,
@@ -472,56 +508,30 @@ def _fetch_kilo_snapshot(
         ):
             attempts.append("api_failed_unauthorized")
             fallback_source = "cli"
-            try:
-                return _fetch_kilo(cli_token), fallback_source, attempts, None
-            except urllib.error.HTTPError as cli_err:
-                legacy = {
-                    "installed": True,
-                    **classify_http_failure(
-                        "kilo", cli_err.code, read_http_error_body(cli_err)
-                    ),
-                }
-                auth = str(legacy.get("fail_reason") or "") != "auth_required"
-                return (
-                    None,
-                    fallback_source,
-                    attempts,
-                    _kilo_error_response(
-                        legacy, source=fallback_source, authenticated=auth
-                    ),
-                )
-            except Exception as cli_err:
-                legacy = {
-                    "installed": True,
-                    **classify_exception_failure(cli_err),
-                }
-                return (
-                    None,
-                    fallback_source,
-                    attempts,
-                    _kilo_error_response(
-                        legacy, source=fallback_source, authenticated=True
-                    ),
-                )
+            fallback_snapshot, fallback_error = _fetch_kilo_with_source(
+                token=cli_token,
+                source=fallback_source,
+            )
+            return fallback_snapshot, fallback_source, attempts, fallback_error
 
-        legacy = {
-            "installed": True,
-            **classify_http_failure("kilo", err.code, body),
-        }
-        auth = str(legacy.get("fail_reason") or "") != "auth_required"
+        legacy = {"installed": True, **classify_http_failure("kilo", err.code, body)}
+        authenticated = str(legacy.get("fail_reason") or "") != "auth_required"
         return (
             None,
             selected_source,
             attempts,
-            _kilo_error_response(legacy, source=selected_source, authenticated=auth),
+            _kilo_error_response(
+                legacy,
+                source=selected_source,
+                authenticated=authenticated,
+            ),
         )
     except Exception as err:
-        legacy = {"installed": True, **classify_exception_failure(err)}
         return (
             None,
             selected_source,
             attempts,
-            _kilo_error_response(legacy, source=selected_source, authenticated=True),
+            _kilo_exception_response(err=err, source=selected_source),
         )
 
 

@@ -64,6 +64,18 @@ class SourceStrategyTests(unittest.TestCase):
         self.assertEqual(plan["fallbackChain"], [])
         self.assertEqual(plan["supportsProbe"], False)
 
+    def test_legacy_remote_source_normalizes_to_web(self):
+        descriptor = ProviderDescriptor(
+            id="amp",
+            display_name="Amp",
+            source_modes=("auto", "web"),
+            preferred_source_policy="web_first",
+        )
+
+        plan = resolve_provider_source_plan(descriptor, settings={"source": "remote"})
+        self.assertEqual(plan["preferredSource"], "web")
+        self.assertEqual(plan["resolvedSourceHint"], "web")
+
 
 if __name__ == "__main__":
     unittest.main()

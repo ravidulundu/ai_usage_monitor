@@ -36,7 +36,7 @@ until the session is invalid, to avoid repeated Keychain prompts.
 | JetBrains AI | Local XML quota file (`local`). |
 | Amp | Web settings page via browser cookies (`web`). |
 | Warp | API token (config/env) → GraphQL request limits (`api`). |
-| Ollama | Web settings page via browser cookies (`web`). |
+| Ollama | Ollama Cloud web settings page via browser cookies (`web`) (local daemon metrics bu provider kapsamı dışında). |
 | OpenRouter | API token (config, overrides env) → credits API (`api`). |
 
 ## Codex
@@ -126,6 +126,7 @@ until the session is invalid, to avoid repeated Keychain prompts.
 - Details: `docs/copilot.md`.
 
 ## Kiro
+- Archived in this Linux repo; not part of the shipped runtime surface.
 - CLI-based: runs `kiro-cli chat --no-interactive "/usage"` with 10s timeout.
 - Parses ANSI output for plan name, monthly credits percentage, and bonus credits.
 - Requires `kiro-cli` installed and logged in via AWS Builder ID.
@@ -133,6 +134,7 @@ until the session is invalid, to avoid repeated Keychain prompts.
 - Details: `docs/kiro.md`.
 
 ## Warp
+- Archived in this Linux repo; not part of the shipped runtime surface.
 - API token from Settings or `WARP_API_KEY` / `WARP_TOKEN` env var.
 - GraphQL credit limits: `https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`.
 - Shows monthly credits usage and next refresh time.
@@ -146,6 +148,7 @@ until the session is invalid, to avoid repeated Keychain prompts.
 - Requires Cloud Monitoring API access in the current project.
 - Details: `docs/vertexai.md`.
 ## JetBrains AI
+- Archived in this Linux repo; not part of the shipped runtime surface.
 - Local XML quota file from IDE configuration directory.
 - Auto-detects installed JetBrains IDEs; uses most recently used.
 - Reads `AIAssistantQuotaManager2.xml` for monthly credits and refill date.
@@ -159,7 +162,8 @@ until the session is invalid, to avoid repeated Keychain prompts.
 - Details: `docs/amp.md`.
 
 ## Ollama
-- Web settings page (`https://ollama.com/settings`) via browser cookies.
+- Ollama Cloud web settings page (`https://ollama.com/settings`) via browser cookies.
+- Bu provider local Ollama daemon (`localhost:11434`) kullanımını değil, yalnız hesap bazlı cloud usage bilgisini raporlar.
 - Parses Cloud Usage plan badge, session/weekly usage, and reset timestamps.
 - Status: none yet.
 - Details: `docs/ollama.md`.

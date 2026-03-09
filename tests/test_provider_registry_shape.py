@@ -36,7 +36,39 @@ class CollectorShapeTests(unittest.TestCase):
 
         self.assertEqual(by_id["codex"]["shortName"], "Codex")
         self.assertEqual(by_id["copilot"]["shortName"], "Copilot")
+        self.assertNotIn("jetbrains", by_id)
+        self.assertNotIn("kiro", by_id)
         self.assertNotIn("kimik2", by_id)
+        self.assertNotIn("warp", by_id)
+
+    def test_registry_descriptor_payload_derives_capabilities_for_auto_modes(self):
+        payload = ProviderRegistry().descriptor_payload()
+        by_id = {entry["id"]: entry for entry in payload}
+
+        codex_caps = by_id["codex"]["providerCapabilities"]
+        claude_caps = by_id["claude"]["providerCapabilities"]
+        gemini_caps = by_id["gemini"]["providerCapabilities"]
+
+        self.assertTrue(codex_caps["supportsLocalCli"])
+        self.assertTrue(codex_caps["supportsApi"])
+        self.assertFalse(codex_caps["supportsWeb"])
+
+        self.assertTrue(claude_caps["supportsLocalCli"])
+        self.assertTrue(claude_caps["supportsApi"])
+        self.assertFalse(claude_caps["supportsWeb"])
+
+        self.assertFalse(gemini_caps["supportsLocalCli"])
+        self.assertTrue(gemini_caps["supportsApi"])
+        self.assertFalse(gemini_caps["supportsWeb"])
+
+    def test_registry_descriptor_payload_keeps_ollama_web_only_capability(self):
+        payload = ProviderRegistry().descriptor_payload()
+        by_id = {entry["id"]: entry for entry in payload}
+        ollama_caps = by_id["ollama"]["providerCapabilities"]
+
+        self.assertFalse(ollama_caps["supportsLocalCli"])
+        self.assertFalse(ollama_caps["supportsApi"])
+        self.assertTrue(ollama_caps["supportsWeb"])
 
 
 if __name__ == "__main__":

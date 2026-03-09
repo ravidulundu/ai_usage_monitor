@@ -78,6 +78,12 @@ QQC2.GroupBox {
 
                 onEnabledChanged: function(enabled) {
                     configRoot.setProviderField(descriptor.id, "enabled", enabled)
+                    if (enabled) {
+                        configRoot.expandedProviderId = descriptor.id
+                        return
+                    }
+                    if (configRoot.expandedProviderId === descriptor.id)
+                        configRoot.expandedProviderId = ""
                 }
 
                 expandedContent: ConfigProviderExpandedContent {

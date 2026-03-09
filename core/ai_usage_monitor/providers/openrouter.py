@@ -17,13 +17,14 @@ from core.ai_usage_monitor.shared.http_failures import (
     classify_http_failure,
     read_http_error_body,
 )
+from core.ai_usage_monitor.shared.url_safety import env_flag_enabled, resolve_safe_url
 
 
 DESCRIPTOR = ProviderDescriptor(
     id="openrouter",
     display_name="OpenRouter",
     short_name="OpenRouter",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("api",),
     config_fields=(
         ProviderConfigField(
@@ -62,11 +63,20 @@ def _api_key(settings: dict[str, Any] | None) -> str | None:
 
 
 def _base_url(settings: dict[str, Any] | None) -> str:
-    return (
+    default_url = "https://openrouter.ai/api/v1"
+    candidate = (
         _get_setting(settings, "apiUrl")
         or os.environ.get("OPENROUTER_API_URL")
-        or "https://openrouter.ai/api/v1"
-    ).rstrip("/")
+        or default_url
+    )
+    return resolve_safe_url(
+        candidate,
+        default_url=default_url,
+        allowed_hosts=("openrouter.ai",),
+        allow_unsafe=env_flag_enabled(
+            os.environ.get("OPENROUTER_ALLOW_UNSAFE_API_URL")
+        ),
+    )
 
 
 def collect_openrouter(

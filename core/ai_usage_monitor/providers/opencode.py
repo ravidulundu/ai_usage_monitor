@@ -17,7 +17,7 @@ from core.ai_usage_monitor.cookies import (
     cookie_source_from_settings,
 )
 from core.ai_usage_monitor.local_usage import scan_opencode_local_usage
-from core.ai_usage_monitor.models import MetricWindow, ProviderState
+from core.ai_usage_monitor.models import LocalUsageSnapshot, MetricWindow, ProviderState
 from core.ai_usage_monitor.providers.base import (
     ProviderBranding,
     ProviderConfigField,
@@ -117,11 +117,15 @@ def _local_auth_type() -> str | None:
     return None
 
 
-def _local_cli_state() -> tuple[dict[str, Any], ProviderState] | None:
+def _local_cli_state(
+    local_usage: LocalUsageSnapshot | None = None,
+) -> tuple[dict[str, Any], ProviderState] | None:
     if not _has_local_opencode_install():
         return None
 
-    local_usage = scan_opencode_local_usage()
+    local_usage = (
+        local_usage if local_usage is not None else scan_opencode_local_usage()
+    )
     local_auth_type = _local_auth_type()
     legacy = {
         "installed": True,
@@ -140,6 +144,28 @@ def _local_cli_state() -> tuple[dict[str, Any], ProviderState] | None:
         extras={"plan": local_auth_type or "", "model": "local-cli"},
     )
     return legacy, state
+
+
+def _uninstalled_state(source: str) -> tuple[dict[str, Any], ProviderState]:
+    return {"installed": False}, ProviderState(
+        id=DESCRIPTOR.id,
+        display_name=DESCRIPTOR.display_name,
+        installed=False,
+        source=source,
+    )
+
+
+def _auto_local_cli_fallback(
+    configured_source: str,
+    local_usage: LocalUsageSnapshot | None = None,
+) -> tuple[dict[str, Any], ProviderState] | None:
+    if configured_source != "auto":
+        return None
+    return _local_cli_state(local_usage=local_usage)
+
+
+def _configured_source(settings: dict[str, Any] | None) -> str:
+    return str((settings or {}).get("source") or "auto")
 
 
 def normalize_workspace_id(raw: str | None) -> str | None:
@@ -167,6 +193,13 @@ def _cookie_header(settings: dict[str, Any] | None) -> tuple[str | None, str | N
         if result:
             return result.header, result.source
     return None, None
+
+
+def _workspace_id_from_settings(settings: dict[str, Any] | None) -> str | None:
+    return normalize_workspace_id(
+        (settings or {}).get("workspaceID")
+        or os.environ.get("CODEXBAR_OPENCODE_WORKSPACE_ID")
+    )
 
 
 def _looks_signed_out(text: str) -> bool:
@@ -413,7 +446,11 @@ def _fetch_subscription_with_retry(
 
 
 def _opencode_success(
-    *, workspace_id: str, cookie_source: str | None, parsed: dict[str, float]
+    *,
+    workspace_id: str,
+    cookie_source: str | None,
+    parsed: dict[str, float],
+    local_usage: LocalUsageSnapshot | None,
 ) -> tuple[dict[str, Any], ProviderState]:
     return {
         "installed": True,
@@ -441,7 +478,7 @@ def _opencode_success(
                 parsed["weekly_reset_at"], tz=timezone.utc
             ).isoformat(),
         ),
-        local_usage=scan_opencode_local_usage(),
+        local_usage=local_usage,
         extras={
             "plan": workspace_id,
             "model": cookie_source or "",
@@ -453,7 +490,10 @@ def _opencode_success(
 
 
 def _opencode_error_state(
-    *, workspace_id: str | None, legacy: dict[str, Any]
+    *,
+    workspace_id: str | None,
+    legacy: dict[str, Any],
+    local_usage: LocalUsageSnapshot | None,
 ) -> ProviderState:
     return ProviderState(
         id=DESCRIPTOR.id,
@@ -463,7 +503,7 @@ def _opencode_error_state(
         status="error",
         source="web",
         error=str(legacy.get("error")) if legacy.get("error") is not None else None,
-        local_usage=scan_opencode_local_usage(),
+        local_usage=local_usage,
         extras={
             **({"workspaceId": workspace_id} if workspace_id else {}),
             **({"accountId": workspace_id} if workspace_id else {}),
@@ -472,73 +512,86 @@ def _opencode_error_state(
     )
 
 
+def _opencode_permission_error(err: PermissionError) -> dict[str, Any]:
+    return {"installed": True, "error": str(err), "fail_reason": "auth_required"}
+
+
+def _opencode_http_error(err: urllib.error.HTTPError) -> dict[str, Any]:
+    return {
+        "installed": True,
+        **classify_http_failure("opencode", err.code, read_http_error_body(err)),
+    }
+
+
+def _opencode_exception_error(err: Exception) -> dict[str, Any]:
+    return {"installed": True, **classify_exception_failure(err)}
+
+
+def _collect_opencode_web(
+    *,
+    cookie_header: str,
+    cookie_source: str | None,
+    workspace_id: str | None,
+) -> tuple[dict[str, Any], ProviderState]:
+    resolved_workspace_id = _resolve_workspace_id(
+        cookie_header=cookie_header,
+        initial_workspace_id=workspace_id,
+    )
+    parsed = _fetch_subscription_with_retry(
+        cookie_header=cookie_header,
+        workspace_id=resolved_workspace_id,
+    )
+    local_usage = scan_opencode_local_usage()
+    return _opencode_success(
+        workspace_id=resolved_workspace_id,
+        cookie_source=cookie_source,
+        parsed=parsed,
+        local_usage=local_usage,
+    )
+
+
 def collect_opencode(
     settings: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], ProviderState]:
-    configured_source = str((settings or {}).get("source") or "auto")
-    if configured_source == "web":
-        configured_source = "auto"
-
-    local_cli = _local_cli_state()
+    configured_source = _configured_source(settings)
 
     if configured_source == "cli":
-        if local_cli:
-            return local_cli
-        return {"installed": False}, ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=False,
-            source="cli",
-        )
+        local_cli = _local_cli_state()
+        return local_cli if local_cli else _uninstalled_state("cli")
 
     source = cookie_source_from_settings(settings, default="auto")
     if configured_source == "web" and source == "off":
-        return {"installed": False}, ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=False,
-            source="web",
-        )
+        return _uninstalled_state("web")
 
     cookie_header, cookie_source = _cookie_header(settings)
     if not cookie_header:
-        if configured_source == "auto" and local_cli:
-            return local_cli
-        return {"installed": False}, ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=False,
-            source="web",
-        )
+        local_cli = _auto_local_cli_fallback(configured_source)
+        return local_cli if local_cli else _uninstalled_state("web")
 
-    workspace_id = normalize_workspace_id(
-        (settings or {}).get("workspaceID")
-        or os.environ.get("CODEXBAR_OPENCODE_WORKSPACE_ID")
-    )
+    workspace_id = _workspace_id_from_settings(settings)
 
     try:
-        workspace_id = _resolve_workspace_id(
-            cookie_header=cookie_header, initial_workspace_id=workspace_id
-        )
-        parsed = _fetch_subscription_with_retry(
-            cookie_header=cookie_header, workspace_id=workspace_id
-        )
-        return _opencode_success(
-            workspace_id=workspace_id,
+        return _collect_opencode_web(
+            cookie_header=cookie_header,
             cookie_source=cookie_source,
-            parsed=parsed,
+            workspace_id=workspace_id,
         )
     except PermissionError as err:
-        legacy = {"installed": True, "error": str(err), "fail_reason": "auth_required"}
+        legacy = _opencode_permission_error(err)
     except urllib.error.HTTPError as err:
-        legacy = {
-            "installed": True,
-            **classify_http_failure("opencode", err.code, read_http_error_body(err)),
-        }
+        legacy = _opencode_http_error(err)
     except Exception as err:
-        legacy = {"installed": True, **classify_exception_failure(err)}
+        legacy = _opencode_exception_error(err)
 
-    if configured_source == "auto" and local_cli:
+    error_local_usage = scan_opencode_local_usage()
+    local_cli = _auto_local_cli_fallback(
+        configured_source, local_usage=error_local_usage
+    )
+    if local_cli:
         return local_cli
 
-    return legacy, _opencode_error_state(workspace_id=workspace_id, legacy=legacy)
+    return legacy, _opencode_error_state(
+        workspace_id=workspace_id,
+        legacy=legacy,
+        local_usage=error_local_usage,
+    )

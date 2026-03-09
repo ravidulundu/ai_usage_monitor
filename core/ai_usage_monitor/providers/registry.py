@@ -40,7 +40,42 @@ class ProviderRegistry:
     def list_descriptors(self) -> list[ProviderDescriptor]:
         return list(self._providers.values())
 
-    def descriptor_payload(self) -> list[dict]:
+    def _descriptor_signal_sources(self, descriptor: ProviderDescriptor) -> set[str]:
+        signals = {
+            str(mode).strip().lower()
+            for mode in descriptor.source_modes
+            if str(mode).strip()
+        }
+        signals.update(descriptor.usage_dashboard_map().keys())
+        return signals
+
+    def _provider_capabilities(
+        self,
+        descriptor: ProviderDescriptor,
+    ) -> dict[str, bool]:
+        signals = self._descriptor_signal_sources(descriptor)
+        supports_local = bool(signals.intersection({"cli", "local", "local_cli"}))
+        supports_api = bool(signals.intersection({"api", "oauth"}))
+        supports_web = bool(signals.intersection({"web", "remote"}))
+
+        if not (supports_local or supports_api or supports_web):
+            policy = str(descriptor.preferred_source_policy or "").strip().lower()
+            if policy in {"local_first", "cli_first"}:
+                supports_local = True
+            elif policy == "api_first":
+                supports_api = True
+            elif policy in {"web_first", "remote_first"}:
+                supports_web = True
+            elif policy == "oauth_first":
+                supports_api = True
+
+        return {
+            "supportsLocalCli": supports_local,
+            "supportsApi": supports_api,
+            "supportsWeb": supports_web,
+        }
+
+    def descriptor_payload(self, *, include_secret_fields: bool = True) -> list[dict]:
         return [
             {
                 "id": descriptor.id,
@@ -59,18 +94,12 @@ class ProviderRegistry:
                     "supportsProbe": "auto" in descriptor.source_modes
                     or "probe" in descriptor.source_modes,
                 },
-                "providerCapabilities": {
-                    "supportsLocalCli": any(
-                        mode in {"cli", "local"} for mode in descriptor.source_modes
-                    ),
-                    "supportsApi": any(
-                        mode in {"api", "oauth"} for mode in descriptor.source_modes
-                    ),
-                    "supportsWeb": any(
-                        mode in {"web", "remote"} for mode in descriptor.source_modes
-                    ),
-                },
-                "configFields": [field.to_dict() for field in descriptor.config_fields],
+                "providerCapabilities": self._provider_capabilities(descriptor),
+                "configFields": [
+                    field.to_dict()
+                    for field in descriptor.config_fields
+                    if include_secret_fields or not field.secret
+                ],
                 "branding": descriptor.branding.to_dict(),
             }
             for descriptor in self.list_descriptors()

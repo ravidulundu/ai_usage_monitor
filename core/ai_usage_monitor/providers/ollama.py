@@ -27,7 +27,7 @@ DESCRIPTOR = ProviderDescriptor(
     id="ollama",
     display_name="Ollama",
     short_name="Ollama",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("web",),
     config_fields=(
         ProviderConfigField(

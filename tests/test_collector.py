@@ -1,9 +1,9 @@
-import unittest
-import tempfile
 import os
+import tempfile
+import unittest
 from unittest import mock
 
-from core.ai_usage_monitor.collector import collect_all
+from core.ai_usage_monitor.collector import collect_all, collect_popup_vm_payload
 from core.ai_usage_monitor.identity import load_identity_store
 from core.ai_usage_monitor.models import MetricWindow, ProviderState
 
@@ -517,13 +517,135 @@ class CollectorTests(unittest.TestCase):
         identity = provider.metadata.get("identity", {})
         store = load_identity_store()
         provider_store = store.get("providers", {}).get("copilot", {})
-
         self.assertEqual(identity.get("known"), False)
         self.assertEqual(identity.get("scope"), "provider")
         self.assertEqual(identity.get("confidence"), "low")
         self.assertEqual(provider.extras.get("identityMissing"), True)
         self.assertEqual(provider_store.get("identityKnown"), False)
         self.assertEqual(provider_store.get("snapshots"), {})
+
+    def test_popup_vm_payload_uses_ttl_cache_for_background_polls(self):
+        payload = {"popup": {"providers": []}, "generatedAt": "2026-03-08T00:00:00Z"}
+
+        with mock.patch(
+            "core.ai_usage_monitor.collector.load_config",
+            return_value={
+                "refreshInterval": 60,
+                "pollingCacheSeconds": 10,
+                "providers": [],
+            },
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.collector._collect_all",
+                return_value=({}, mock.Mock()),
+            ) as collect_all_mock:
+                with mock.patch(
+                    "core.ai_usage_monitor.collector.build_popup_view_model",
+                    return_value=payload,
+                ):
+                    first = collect_popup_vm_payload(force=False)
+                    second = collect_popup_vm_payload(force=False)
+
+        self.assertEqual(first, second)
+        self.assertEqual(collect_all_mock.call_count, 1)
+
+    def test_popup_vm_payload_force_bypasses_cache(self):
+        app_state = mock.Mock()
+        payload = {"popup": {"providers": []}, "generatedAt": "2026-03-08T00:00:00Z"}
+
+        with mock.patch(
+            "core.ai_usage_monitor.collector.load_config",
+            return_value={
+                "refreshInterval": 60,
+                "pollingCacheSeconds": 10,
+                "providers": [],
+            },
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.collector._collect_all",
+                return_value=({}, app_state),
+            ) as collect_all_mock:
+                with mock.patch(
+                    "core.ai_usage_monitor.collector.build_popup_view_model",
+                    return_value=payload,
+                ):
+                    collect_popup_vm_payload(force=False)
+                    collect_popup_vm_payload(force=True)
+
+        self.assertEqual(collect_all_mock.call_count, 2)
+
+    def test_popup_vm_payload_cache_key_varies_by_preferred_provider(self):
+        app_state = mock.Mock()
+        payload = {"popup": {"providers": []}, "generatedAt": "2026-03-08T00:00:00Z"}
+
+        with mock.patch(
+            "core.ai_usage_monitor.collector.load_config",
+            return_value={
+                "refreshInterval": 60,
+                "pollingCacheSeconds": 10,
+                "providers": [],
+            },
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.collector._collect_all",
+                return_value=({}, app_state),
+            ) as collect_all_mock:
+                with mock.patch(
+                    "core.ai_usage_monitor.collector.build_popup_view_model",
+                    return_value=payload,
+                ):
+                    collect_popup_vm_payload(preferred_provider_id="codex", force=False)
+                    collect_popup_vm_payload(
+                        preferred_provider_id="claude", force=False
+                    )
+
+        self.assertEqual(collect_all_mock.call_count, 2)
+
+    def test_collect_all_reuses_provider_freshness_cache_for_ttl_enabled_provider(self):
+        fake_descriptor = mock.Mock()
+        fake_descriptor.id = "vertexai"
+        fake_descriptor.display_name = "Vertex AI"
+        fake_descriptor.default_enabled = True
+        fake_descriptor.source_modes = ("oauth",)
+        fake_descriptor.branding.to_dict.return_value = {"iconKey": "vertexai"}
+
+        calls = {"count": 0}
+
+        def fake_collector(_settings):
+            calls["count"] += 1
+            return {}, ProviderState(
+                id="vertexai",
+                display_name="Vertex AI",
+                installed=True,
+                source="oauth",
+                extras={"accountId": "project-1"},
+            )
+
+        config = {"providers": [{"id": "vertexai", "enabled": True, "source": "oauth"}]}
+        with mock.patch(
+            "core.ai_usage_monitor.collector.load_config", return_value=config
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.collector.provider_settings_map",
+                return_value={
+                    "vertexai": {"id": "vertexai", "enabled": True, "source": "oauth"}
+                },
+            ):
+                with mock.patch(
+                    "core.ai_usage_monitor.collector.ProviderRegistry"
+                ) as registry_cls:
+                    registry_cls.return_value.list_descriptors.return_value = [
+                        fake_descriptor
+                    ]
+                    with mock.patch.dict(
+                        "core.ai_usage_monitor.collector.COLLECTORS",
+                        {"vertexai": fake_collector},
+                        clear=True,
+                    ):
+                        collect_all()
+                        collect_all()
+
+        self.assertEqual(calls["count"], 1)
 
     def test_refresh_pipeline_handles_rapid_account_switches(self):
         fake_descriptor = mock.Mock()

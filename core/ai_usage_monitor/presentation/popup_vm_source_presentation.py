@@ -3,18 +3,38 @@ from __future__ import annotations
 from typing import Any
 
 from core.ai_usage_monitor.models import ProviderState
+from core.ai_usage_monitor.presentation.identity_vm import (
+    provider_identity_refreshing,
+)
 
 
 _LOCAL_SOURCE_IDS = {"cli", "local", "oauth", "local_cli"}
-_REMOTE_SOURCE_IDS = {"api", "web", "remote"}
+_REMOTE_SOURCE_IDS = {"api", "web"}
+_API_SOURCE_IDS = {"api"}
+_WEB_SOURCE_IDS = {"web"}
+
+
+def _normalize_source_id(source_id: str) -> str:
+    normalized = str(source_id or "").strip().lower()
+    if normalized == "remote":
+        return "web"
+    return normalized
 
 
 def _is_local_source(source_id: str) -> bool:
-    return source_id in _LOCAL_SOURCE_IDS
+    return _normalize_source_id(source_id) in _LOCAL_SOURCE_IDS
 
 
 def _is_remote_source(source_id: str) -> bool:
-    return source_id in _REMOTE_SOURCE_IDS
+    return _normalize_source_id(source_id) in _REMOTE_SOURCE_IDS
+
+
+def _is_api_source(source_id: str) -> bool:
+    return _normalize_source_id(source_id) in _API_SOURCE_IDS
+
+
+def _is_web_source(source_id: str) -> bool:
+    return _normalize_source_id(source_id) in _WEB_SOURCE_IDS
 
 
 def _active_source_label(
@@ -31,7 +51,9 @@ def _active_source_label(
         return "Hybrid"
     if _is_local_source(resolved_source):
         return "Local CLI"
-    if _is_remote_source(resolved_source):
+    if _is_web_source(resolved_source):
+        return "Web"
+    if _is_api_source(resolved_source):
         return "API"
     if canonical_mode == "local_cli":
         return "Local CLI"
@@ -104,9 +126,17 @@ def source_unavailable_reason(
         .strip()
         .lower()
     )
+    resolved_source = _normalize_source_id(resolved_source)
+    metadata = provider.metadata if isinstance(provider.metadata, dict) else {}
+    raw_identity = metadata.get("identity")
+    identity: dict[str, Any] = raw_identity if isinstance(raw_identity, dict) else {}
+    source_switch_refreshing = provider_identity_refreshing(provider) and bool(
+        identity.get("sourceChanged")
+    )
 
     if (
-        strategy.get("fallbackActive")
+        source_switch_refreshing
+        and strategy.get("fallbackActive")
         and str(strategy.get("preferredSource") or "").strip().lower()
         != resolved_source
     ):
@@ -169,6 +199,7 @@ def source_presentation_vm(
         .strip()
         .lower()
     )
+    resolved_source = _normalize_source_id(resolved_source)
     fallback_active = bool(
         strategy.get("fallbackActive")
         or (source_model.get("fallbackState") or {}).get("active")

@@ -1,6 +1,8 @@
 import unittest
+from unittest import mock
 
 from core.ai_usage_monitor.providers.minimax import (
+    collect_minimax,
     parse_cookie_override,
     parse_minimax_payload,
 )
@@ -39,6 +41,16 @@ class MiniMaxProviderTests(unittest.TestCase):
         self.assertEqual(parsed["total"], 200)
         self.assertEqual(parsed["used"], 139)
         self.assertEqual(round(parsed["used_pct"]), 70)
+
+    def test_collect_minimax_api_source_requires_api_token(self):
+        with mock.patch(
+            "core.ai_usage_monitor.providers.minimax._api_token", return_value=None
+        ):
+            legacy, state = collect_minimax({"source": "api"})
+
+        self.assertEqual(legacy["fail_reason"], "missing_credentials")
+        self.assertFalse(state.authenticated)
+        self.assertEqual(state.source, "api")
 
 
 if __name__ == "__main__":

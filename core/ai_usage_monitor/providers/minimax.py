@@ -31,7 +31,7 @@ DESCRIPTOR = ProviderDescriptor(
     id="minimax",
     display_name="MiniMax",
     short_name="MiniMax",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("auto", "web", "api"),
     config_fields=(
         ProviderConfigField(
@@ -88,6 +88,17 @@ class MiniMaxPayload(TypedDict):
     used_pct: float | None
     window_minutes: int | None
     reset_at: str | None
+
+
+_MINIMAX_AUTO_COOKIE_NAMES = {
+    "sessionid",
+    "session",
+    "auth_token",
+    "access_token",
+    "token",
+    "id_token",
+    "__Secure-next-auth.session-token",
+}
 
 
 def _normalize_payload_data(payload: dict[str, Any]) -> dict[str, Any]:
@@ -254,7 +265,10 @@ def _auto_cookie(
         if region == "global"
         else ["platform.minimaxi.com", "minimaxi.com"]
     )
-    result = import_cookie_header(domains=domains, cookie_names=None)
+    result = import_cookie_header(
+        domains=domains,
+        cookie_names=_MINIMAX_AUTO_COOKIE_NAMES,
+    )
     if not result:
         return None, None
     parsed = parse_cookie_override(result.header)
@@ -348,6 +362,49 @@ def _minimax_error_state(
         status="error",
         source=source,
         error=str(legacy.get("error")) if legacy.get("error") is not None else None,
+    )
+
+
+def _minimax_missing_credentials(
+    *,
+    source: str,
+    error: str,
+) -> tuple[dict[str, Any], ProviderState]:
+    legacy = {
+        "installed": True,
+        "error": error,
+        "fail_reason": "missing_credentials",
+    }
+    return legacy, _minimax_error_state(
+        source=source,
+        legacy=legacy,
+        authenticated=False,
+    )
+
+
+def _minimax_not_installed(source: str) -> tuple[dict[str, Any], ProviderState]:
+    return {"installed": False}, ProviderState(
+        id=DESCRIPTOR.id,
+        display_name=DESCRIPTOR.display_name,
+        installed=False,
+        source=source,
+    )
+
+
+def _minimax_api_result(
+    *,
+    source: str,
+    region: str,
+    api_token: str | None,
+    allow_web_fallback: bool,
+) -> tuple[dict[str, Any], ProviderState] | None:
+    if not api_token:
+        return None
+    return _collect_minimax_api(
+        source=source,
+        region=region,
+        api_token=api_token,
+        allow_web_fallback=allow_web_fallback,
     )
 
 
@@ -484,17 +541,11 @@ def collect_minimax(
 
     if source == "api":
         if not api_token:
-            error = "MiniMax API token not found. Set apiKey or MINIMAX_API_KEY."
-            return {
-                "installed": True,
-                "error": error,
-                "fail_reason": "missing_credentials",
-            }, _minimax_error_state(
+            return _minimax_missing_credentials(
                 source="api",
-                legacy={"error": error},
-                authenticated=False,
+                error="MiniMax API token not found. Set apiKey or MINIMAX_API_KEY.",
             )
-        api_result = _collect_minimax_api(
+        api_result = _minimax_api_result(
             source=source,
             region=region,
             api_token=api_token,
@@ -504,7 +555,7 @@ def collect_minimax(
             return api_result
 
     if source == "auto" and api_token:
-        api_result = _collect_minimax_api(
+        api_result = _minimax_api_result(
             source=source,
             region=region,
             api_token=api_token,
@@ -515,21 +566,11 @@ def collect_minimax(
 
     if source in {"web", "auto"}:
         if not cookie_override:
-            return {"installed": False}, ProviderState(
-                id=DESCRIPTOR.id,
-                display_name=DESCRIPTOR.display_name,
-                installed=False,
-                source="web",
-            )
+            return _minimax_not_installed("web")
         return _collect_minimax_web(
             region=region,
             cookie_override=cookie_override,
             cookie_source=cookie_source,
         )
 
-    return {"installed": False}, ProviderState(
-        id=DESCRIPTOR.id,
-        display_name=DESCRIPTOR.display_name,
-        installed=False,
-        source=source,
-    )
+    return _minimax_not_installed(source)

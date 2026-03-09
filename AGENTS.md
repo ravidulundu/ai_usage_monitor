@@ -1,3 +1,59 @@
+## Proje Scope Kilidi
+
+- Bu repo için yerel ajan/skill hedefi `.codex/skills/` dizinidir; `.claude/` merkezli öneri veya çıktı üretme.
+- Proje içi bootstrap, guardrail ve workflow dokümanları yalnız bu repo sınırında kalmalı; başka repo veya global klasör yapısı varsayılmamalı.
+- Kod, plan, review ve skill üretiminde canonical referans bu repo kökü (`/home/osmandulundu/projects/personal/ai_usage_monitor`) ve alt dizinleridir.
+- Brownfield kararlarında Codex workflow’u merkez alınmalı: `AGENTS.md`, `tasks/todo.md`, `tasks/lessons.md` ve proje içi `.codex/skills/*` birlikte düşünülmeli.
+- Kullanıcı özellikle başka araç istemedikçe bootstrap çıktısı, handoff metni ve dizin yapısı Codex terminolojisiyle yazılmalı.
+
+## Proje-Özel Skill Aktivasyonu
+
+- Bu repo içinde önce proje içi local skill’lere bak: `.codex/skills/*`.
+- İş açıkça aşağıdaki alanlardan birine giriyorsa ilgili local skill zorunlu kabul edilir; generic/global skill ancak yerel skill boşluk bırakıyorsa yardımcı rol oynar.
+
+### Yerel Skills
+
+- `project-architecture`
+  - Klasör yapısı, modül sınırı, archived provider ayrımı, contract ownership kararlarında kullan.
+- `python-standards`
+  - `core/ai_usage_monitor/**/*.py`, `tools/*.py`, `tests/**/*.py` değişikliklerinde kullan.
+- `security-hardening`
+  - Secret, cookie, auth file, external API, subprocess, redaction, path safety işlerinde kullan.
+- `error-handling`
+  - Provider failure state, CLI boundary, unavailable reason, fallback hata semantiği işlerinde kullan.
+- `data-validation`
+  - `config`, provider response, parser, `sourceModel`, popup/config payload shape doğrulamalarında kullan.
+- `testing-strategy`
+  - Bug fix, regression test, contract test, health gate, pytest/mypy doğrulamasında kullan.
+- `performance-optimization`
+  - Polling, cache, local scan, subprocess churn, freshness/TTL, FinOps türü işlerde kullan.
+- `dependency-management`
+  - `requirements-dev.txt`, `package.json`, pre-commit, lint/type/test toolchain, yeni dependency kararlarında kullan.
+- `documentation-standards`
+  - `README.md`, `docs/`, `tasks/todo.md`, `tasks/lessons.md`, ADR/plan/review işlerinde kullan.
+- `git-workflow`
+  - Commit scope, staging, verification-before-commit, diff hygiene işlerinde kullan.
+- `desktop-integration-patterns`
+  - `com.aiusagemonitor/contents/ui/` ve `gnome-extension/aiusagemonitor@aimonitor/` altındaki KDE/GNOME işleri için kullan.
+- `provider-patterns`
+  - `core/ai_usage_monitor/providers/*.py` collector, auth, source mode, fallback, provider tests işlerinde kullan.
+- `identity-state-management`
+  - Fingerprint, snapshot, account switch, stale data guard, mismatch render korumalarında kullan.
+- `presentation-contracts`
+  - `popup-vm`, `config-ui`, `sourcePresentation`, KDE/GNOME ortak VM contract işlerinde kullan.
+- `config-and-runtime-state`
+  - `config.py`, `runtime_cache.py`, state dir, default provider seti, runtime cache kararlarında kullan.
+- `observability`
+  - Health checks, structured debug, diagnostic logging, failure detection, performance measurement işlerinde kullan.
+
+### Uygulama Stratejisi
+
+- Bir iş birden çok bounded context’e değiyorsa önce `project-architecture`, sonra domain-specific local skill, en sonda `testing-strategy` uygula.
+- KDE/GNOME render değişikliği varsa `presentation-contracts` ve `desktop-integration-patterns` birlikte düşünülmeli.
+- Provider veya source davranışı değişiyorsa en az şu zincir zorunlu: `provider-patterns` -> `identity-state-management` veya `data-validation` -> `testing-strategy`.
+- Config, cache veya polling değişiyorsa `config-and-runtime-state` ve `performance-optimization` birlikte uygulanmalı.
+- Yeni plan, refactor veya bootstrap işi kapatılırken `documentation-standards` zorunludur.
+
 ### İş Akışı Orkestrasyonu
 
 ### 1. Plan Modu Varsayılanı

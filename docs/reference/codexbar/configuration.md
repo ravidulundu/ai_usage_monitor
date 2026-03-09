@@ -74,6 +74,8 @@ All provider fields are optional unless noted.
 Current IDs (see `Sources/CodexBarCore/Providers/Providers.swift`):
 `codex`, `claude`, `cursor`, `opencode`, `factory`, `gemini`, `antigravity`, `copilot`, `zai`, `minimax`, `kimi`, `kilo`, `kiro`, `vertexai`, `augment`, `jetbrains`, `kimik2`, `amp`, `ollama`, `synthetic`, `warp`, `openrouter`.
 
+In this Linux repo, `kiro`, `jetbrains`, `kimik2`, and `warp` are archived reference providers and are not part of the shipped runtime registry.
+
 ## Ordering
 The order of `providers` controls display/order in the app and CLI. Reorder the array to change ordering.
 

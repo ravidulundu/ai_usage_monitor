@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from core.ai_usage_monitor.models import LocalUsageSnapshot
+from core.ai_usage_monitor.runtime_cache import read_ttl_cache, write_ttl_cache
+
+
+_LOCAL_USAGE_CACHE_FILE = "local_usage_cache.json"
+_LOCAL_USAGE_CACHE_TTL_SECONDS = 3600
 
 
 def _parse_iso(ts: str | None) -> datetime | None:
@@ -32,8 +38,178 @@ def _iter_files(root: Path, pattern: str) -> Iterator[Path]:
         return
 
 
+def _file_tree_fingerprint(roots: Iterable[Path], pattern: str) -> str:
+    items: list[tuple[str, int, int]] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in _iter_files(root, pattern):
+            try:
+                stat_result = path.stat()
+            except OSError:
+                continue
+            items.append((str(path), stat_result.st_mtime_ns, stat_result.st_size))
+    encoded = json.dumps(items, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _cached_local_usage(
+    cache_key: str,
+    fingerprint: str,
+) -> LocalUsageSnapshot | None:
+    cached = read_ttl_cache(
+        _LOCAL_USAGE_CACHE_FILE,
+        cache_key,
+        _LOCAL_USAGE_CACHE_TTL_SECONDS,
+        fingerprint=fingerprint,
+    )
+    return LocalUsageSnapshot.from_dict(cached)
+
+
+def _store_local_usage(
+    cache_key: str,
+    fingerprint: str,
+    snapshot: LocalUsageSnapshot | None,
+) -> None:
+    if snapshot is None:
+        return
+    write_ttl_cache(
+        _LOCAL_USAGE_CACHE_FILE,
+        cache_key,
+        snapshot.to_dict(),
+        fingerprint=fingerprint,
+    )
+
+
+def _claude_usage_roots() -> list[Path]:
+    return [
+        Path.home() / ".claude" / "projects",
+        Path.home() / ".config" / "claude" / "projects",
+    ]
+
+
+def _existing_roots(roots: Iterable[Path]) -> list[Path]:
+    return [root for root in roots if root.exists()]
+
+
+def _iter_jsonl_objects(roots: Iterable[Path]) -> Iterator[dict[str, Any]]:
+    for root in roots:
+        for path in _iter_files(root, "*.jsonl"):
+            try:
+                with open(path, errors="replace") as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except Exception:
+                            continue
+                        if isinstance(record, dict):
+                            yield record
+            except OSError:
+                continue
+
+
+def _message_usage_tokens(record: dict[str, Any]) -> int | None:
+    message = (
+        record.get("message", {}) if isinstance(record.get("message"), dict) else {}
+    )
+    usage = message.get("usage", {}) if isinstance(message.get("usage"), dict) else {}
+    if not usage:
+        return None
+
+    def _coerce_token_count(value: Any) -> int:
+        try:
+            parsed = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return parsed if parsed > 0 else 0
+
+    tokens = _coerce_token_count(usage.get("input_tokens"))
+    tokens += _coerce_token_count(usage.get("cache_read_input_tokens"))
+    tokens += _coerce_token_count(usage.get("cache_creation_input_tokens"))
+    tokens += _coerce_token_count(usage.get("output_tokens"))
+    return tokens if tokens > 0 else None
+
+
+def _build_daily_snapshot(
+    records: Iterable[dict[str, Any]],
+    *,
+    include_record: Callable[[dict[str, Any]], bool],
+) -> LocalUsageSnapshot | None:
+    since = (datetime.now(timezone.utc) - timedelta(days=29)).date()
+    latest_ts = None
+    latest_day_total = None
+    day_totals: dict[str, int] = {}
+    found = False
+
+    for record in records:
+        if not include_record(record):
+            continue
+        tokens = _message_usage_tokens(record)
+        if tokens is None:
+            continue
+        found = True
+        timestamp = record.get("timestamp")
+        day_key = _parse_day(timestamp)
+        dt = _parse_iso(timestamp)
+        if day_key and dt:
+            day_totals[day_key] = day_totals.get(day_key, 0) + tokens
+            if latest_ts is None or dt > latest_ts:
+                latest_ts = dt
+                latest_day_total = day_totals[day_key]
+
+    if not found:
+        return None
+
+    rolling_total = 0
+    for day_key, total in day_totals.items():
+        try:
+            if datetime.fromisoformat(day_key).date() >= since:
+                rolling_total += total
+        except Exception:
+            continue
+
+    return LocalUsageSnapshot(
+        session_tokens=latest_day_total,
+        last_30_days_tokens=rolling_total or None,
+    )
+
+
+def _scan_cached_message_usage(
+    *,
+    cache_key: str,
+    roots: list[Path],
+    include_record: Callable[[dict[str, Any]], bool],
+) -> LocalUsageSnapshot | None:
+    existing_roots = _existing_roots(roots)
+    if not existing_roots:
+        return None
+    fingerprint = _file_tree_fingerprint(existing_roots, "*.jsonl")
+    cached = _cached_local_usage(cache_key, fingerprint)
+    if cached is not None:
+        return cached
+    snapshot = _build_daily_snapshot(
+        _iter_jsonl_objects(existing_roots),
+        include_record=include_record,
+    )
+    _store_local_usage(cache_key, fingerprint, snapshot)
+    return snapshot
+
+
+def _is_vertex_message(record: dict[str, Any]) -> bool:
+    message = (
+        record.get("message", {}) if isinstance(record.get("message"), dict) else {}
+    )
+    model = str(message.get("model") or "")
+    blob = json.dumps(record).lower()
+    return "@" in model or "vertex" in blob or "gcp" in blob
+
+
 def scan_codex_local_usage(
     min_timestamp: str | datetime | None = None,
+    files: Iterable[Path] | None = None,
 ) -> LocalUsageSnapshot | None:
     root = Path.home() / ".codex" / "sessions"
     if not root.exists():
@@ -49,7 +225,8 @@ def scan_codex_local_usage(
     latest_tokens = None
     day_totals: dict[str, int] = {}
 
-    for path in _iter_files(root, "*.jsonl"):
+    file_iter = files if files is not None else _iter_files(root, "*.jsonl")
+    for path in file_iter:
         file_latest_ts = None
         file_latest_total = None
         try:
@@ -118,151 +295,18 @@ def scan_codex_local_usage(
 
 
 def scan_claude_local_usage() -> LocalUsageSnapshot | None:
-    roots = [
-        Path.home() / ".claude" / "projects",
-        Path.home() / ".config" / "claude" / "projects",
-    ]
-    since = (datetime.now(timezone.utc) - timedelta(days=29)).date()
-    latest_ts = None
-    latest_day_total = None
-    day_totals: dict[str, int] = {}
-    found = False
-
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in _iter_files(root, "*.jsonl"):
-            try:
-                with open(path, errors="replace") as handle:
-                    for line in handle:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            obj = json.loads(line)
-                        except Exception:
-                            continue
-                        message = (
-                            obj.get("message", {})
-                            if isinstance(obj.get("message"), dict)
-                            else {}
-                        )
-                        usage = (
-                            message.get("usage", {})
-                            if isinstance(message.get("usage"), dict)
-                            else {}
-                        )
-                        if not usage:
-                            continue
-                        tokens = int(usage.get("input_tokens") or 0)
-                        tokens += int(usage.get("cache_read_input_tokens") or 0)
-                        tokens += int(usage.get("cache_creation_input_tokens") or 0)
-                        tokens += int(usage.get("output_tokens") or 0)
-                        if tokens <= 0:
-                            continue
-                        found = True
-                        timestamp = obj.get("timestamp")
-                        day_key = _parse_day(timestamp)
-                        dt = _parse_iso(timestamp)
-                        if day_key and dt:
-                            day_totals[day_key] = day_totals.get(day_key, 0) + tokens
-                            if latest_ts is None or dt > latest_ts:
-                                latest_ts = dt
-                                latest_day_total = day_totals[day_key]
-            except OSError:
-                continue
-
-    if not found:
-        return None
-
-    rolling_total = 0
-    for day_key, total in day_totals.items():
-        try:
-            if datetime.fromisoformat(day_key).date() >= since:
-                rolling_total += total
-        except Exception:
-            continue
-
-    return LocalUsageSnapshot(
-        session_tokens=latest_day_total,
-        last_30_days_tokens=rolling_total or None,
+    return _scan_cached_message_usage(
+        cache_key="claude",
+        roots=_claude_usage_roots(),
+        include_record=lambda _record: True,
     )
 
 
 def scan_vertex_local_usage() -> LocalUsageSnapshot | None:
-    roots = [
-        Path.home() / ".claude" / "projects",
-        Path.home() / ".config" / "claude" / "projects",
-    ]
-    since = (datetime.now(timezone.utc) - timedelta(days=29)).date()
-    latest_ts = None
-    latest_day_total = None
-    day_totals: dict[str, int] = {}
-    found = False
-
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in _iter_files(root, "*.jsonl"):
-            try:
-                with open(path, errors="replace") as handle:
-                    for line in handle:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            obj = json.loads(line)
-                        except Exception:
-                            continue
-                        message = (
-                            obj.get("message", {})
-                            if isinstance(obj.get("message"), dict)
-                            else {}
-                        )
-                        usage = (
-                            message.get("usage", {})
-                            if isinstance(message.get("usage"), dict)
-                            else {}
-                        )
-                        if not usage:
-                            continue
-                        model = str(message.get("model") or "")
-                        blob = json.dumps(obj).lower()
-                        is_vertex = "@" in model or "vertex" in blob or "gcp" in blob
-                        if not is_vertex:
-                            continue
-                        tokens = int(usage.get("input_tokens") or 0)
-                        tokens += int(usage.get("cache_read_input_tokens") or 0)
-                        tokens += int(usage.get("cache_creation_input_tokens") or 0)
-                        tokens += int(usage.get("output_tokens") or 0)
-                        if tokens <= 0:
-                            continue
-                        found = True
-                        timestamp = obj.get("timestamp")
-                        day_key = _parse_day(timestamp)
-                        dt = _parse_iso(timestamp)
-                        if day_key and dt:
-                            day_totals[day_key] = day_totals.get(day_key, 0) + tokens
-                            if latest_ts is None or dt > latest_ts:
-                                latest_ts = dt
-                                latest_day_total = day_totals[day_key]
-            except OSError:
-                continue
-
-    if not found:
-        return None
-
-    rolling_total = 0
-    for day_key, total in day_totals.items():
-        try:
-            if datetime.fromisoformat(day_key).date() >= since:
-                rolling_total += total
-        except Exception:
-            continue
-
-    return LocalUsageSnapshot(
-        session_tokens=latest_day_total,
-        last_30_days_tokens=rolling_total or None,
+    return _scan_cached_message_usage(
+        cache_key="vertexai",
+        roots=_claude_usage_roots(),
+        include_record=_is_vertex_message,
     )
 
 
@@ -274,6 +318,10 @@ def scan_opencode_local_usage() -> LocalUsageSnapshot | None:
     existing_roots = [root for root in roots if root.exists()]
     if not existing_roots:
         return None
+    fingerprint = _file_tree_fingerprint(existing_roots, "*.json")
+    cached = _cached_local_usage("opencode", fingerprint)
+    if cached is not None:
+        return cached
 
     since = (datetime.now(timezone.utc) - timedelta(days=29)).date()
     latest_session_id = None
@@ -338,9 +386,11 @@ def scan_opencode_local_usage() -> LocalUsageSnapshot | None:
     if latest_session_id is None and not day_totals:
         return None
 
-    return LocalUsageSnapshot(
+    snapshot = LocalUsageSnapshot(
         session_tokens=session_totals.get(latest_session_id)
         if latest_session_id
         else None,
         last_30_days_tokens=sum(day_totals.values()) if day_totals else None,
     )
+    _store_local_usage("opencode", fingerprint, snapshot)
+    return snapshot

@@ -2,7 +2,10 @@ import unittest
 from unittest import mock
 import subprocess
 
-from core.ai_usage_monitor.providers.kiro import collect_kiro, parse_kiro_output
+from core.ai_usage_monitor.archived_providers.kiro import (
+    collect_kiro,
+    parse_kiro_output,
+)
 
 
 class KiroProviderTests(unittest.TestCase):
@@ -25,7 +28,8 @@ Bonus credits:
 
     def test_collect_kiro_reports_not_installed_when_binary_missing(self):
         with mock.patch(
-            "core.ai_usage_monitor.providers.kiro.resolve_cli_binary", return_value=None
+            "core.ai_usage_monitor.archived_providers.kiro.resolve_cli_binary",
+            return_value=None,
         ):
             legacy, state = collect_kiro()
         self.assertFalse(legacy["installed"])
@@ -45,11 +49,11 @@ Monthly credits:
             args=["/tmp/kiro-cli", "chat"], returncode=0, stdout=usage_output, stderr=""
         )
         with mock.patch(
-            "core.ai_usage_monitor.providers.kiro.resolve_cli_binary",
+            "core.ai_usage_monitor.archived_providers.kiro.resolve_cli_binary",
             return_value="/tmp/kiro-cli",
         ):
             with mock.patch(
-                "core.ai_usage_monitor.providers.kiro.subprocess.run",
+                "core.ai_usage_monitor.archived_providers.kiro.subprocess.run",
                 side_effect=[whoami_result, usage_result],
             ) as run_mock:
                 legacy, state = collect_kiro()

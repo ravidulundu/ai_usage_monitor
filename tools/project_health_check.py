@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,10 +54,7 @@ class CheckResult:
     name: str
     status: str
     details: str = ""
-
-    @property
-    def ok(self) -> bool:
-        return self.status != "FAIL"
+    elapsed_ms: float | None = None
 
 
 def _rel(path: Path) -> str:
@@ -734,9 +732,14 @@ def main() -> int:
 
     results: list[CheckResult] = []
     for _name, fn in build_checks(args.mode):
+        started = time.perf_counter()
         result = fn()
+        result.elapsed_ms = (time.perf_counter() - started) * 1000.0
         results.append(result)
-        print(f"[{result.status}] {result.name}")
+        elapsed = (
+            f"{result.elapsed_ms:.1f}ms" if result.elapsed_ms is not None else "n/a"
+        )
+        print(f"[{result.status}] {result.name} ({elapsed})")
         if result.details:
             print(result.details)
 

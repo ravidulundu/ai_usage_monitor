@@ -170,9 +170,14 @@ def test_settings_presentation_canonical_fields_are_stable():
     expected = {
         "sourceModeLabel",
         "activeSourceLabel",
+        "preferredSourceLabel",
         "sourceStatusLabel",
         "fallbackLabel",
         "availabilityLabel",
+        "statusTags",
+        "sourceReasonLabel",
+        "strategyLabel",
+        "capabilitiesLabel",
         "subtitle",
     }
     assert set(SETTINGS_PRESENTATION_CANONICAL_FIELDS) == expected

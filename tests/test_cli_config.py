@@ -5,7 +5,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from core.ai_usage_monitor.cli import config_ui_payload, config_ui_state_payload, main
+from core.ai_usage_monitor.cli import (
+    config_ui_payload,
+    config_ui_state_payload,
+    main,
+    parse_popup_vm_args,
+)
 
 
 class CLIConfigTests(unittest.TestCase):
@@ -30,6 +35,10 @@ class CLIConfigTests(unittest.TestCase):
         self.assertIn("supportedSources", copilot)
         self.assertIn("preferredSourcePolicy", copilot)
         self.assertIn("fetchStrategy", copilot)
+        config_map = {entry["id"]: entry for entry in payload["config"]["providers"]}
+        self.assertNotIn("apiKey", config_map["copilot"])
+        copilot_fields = [item["key"] for item in copilot["configFields"]]
+        self.assertNotIn("apiKey", copilot_fields)
 
     def test_config_ui_state_payload_wraps_state(self):
         with mock.patch(
@@ -78,7 +87,29 @@ class CLIConfigTests(unittest.TestCase):
             with mock.patch("builtins.print"):
                 main(["popup-vm", "codex"])
 
-        popup_mock.assert_called_once_with(preferred_provider_id="codex")
+        popup_mock.assert_called_once_with(preferred_provider_id="codex", force=False)
+
+    def test_parse_popup_vm_args_supports_force_without_provider(self):
+        preferred_provider_id, force = parse_popup_vm_args(["--force"])
+
+        self.assertIsNone(preferred_provider_id)
+        self.assertTrue(force)
+
+    def test_parse_popup_vm_args_supports_provider_and_force(self):
+        preferred_provider_id, force = parse_popup_vm_args(["codex", "--force"])
+
+        self.assertEqual(preferred_provider_id, "codex")
+        self.assertTrue(force)
+
+    def test_popup_vm_mode_forwards_force_flag(self):
+        with mock.patch(
+            "core.ai_usage_monitor.cli.collect_popup_vm_payload",
+            return_value={"popup": {"providers": []}},
+        ) as popup_mock:
+            with mock.patch("builtins.print"):
+                main(["popup-vm", "codex", "--force"])
+
+        popup_mock.assert_called_once_with(preferred_provider_id="codex", force=True)
 
     def test_config_save_writes_normalized_config(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,7 +120,6 @@ class CLIConfigTests(unittest.TestCase):
                         "id": "copilot",
                         "enabled": True,
                         "source": "api",
-                        "apiKey": "gho_test",
                     }
                 ]
             }
@@ -103,7 +133,24 @@ class CLIConfigTests(unittest.TestCase):
                 self.assertTrue(config_file.exists())
                 written = json.loads(config_file.read_text())
                 provider_map = {entry["id"]: entry for entry in written["providers"]}
-                self.assertEqual(provider_map["copilot"]["apiKey"], "gho_test")
+                self.assertEqual(provider_map["copilot"]["source"], "api")
+
+    def test_config_save_rejects_sensitive_fields_over_argv(self):
+        raw = {
+            "providers": [
+                {
+                    "id": "copilot",
+                    "enabled": True,
+                    "source": "api",
+                    "apiKey": "gho_test",
+                }
+            ]
+        }
+        encoded = base64.urlsafe_b64encode(json.dumps(raw).encode("utf-8")).decode(
+            "utf-8"
+        )
+        with self.assertRaises(SystemExit):
+            main(["config-save", encoded])
 
     def test_config_save_json_writes_normalized_config(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -116,6 +163,106 @@ class CLIConfigTests(unittest.TestCase):
                 written = json.loads(config_file.read_text())
                 provider_map = {entry["id"]: entry for entry in written["providers"]}
                 self.assertFalse(provider_map["opencode"]["enabled"])
+                self.assertEqual(provider_map["opencode"]["source"], "web")
+
+    def test_config_save_json_accepts_opencode_cookie_source_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            raw = {
+                "providers": [
+                    {
+                        "id": "opencode",
+                        "enabled": True,
+                        "source": "auto",
+                        "cookieSource": "off",
+                    }
+                ]
+            }
+
+            with mock.patch("pathlib.Path.home", return_value=home):
+                main(["config-save-json", json.dumps(raw)])
+                config_file = home / ".config" / "ai-usage-monitor" / "config.json"
+                written = json.loads(config_file.read_text())
+                provider_map = {entry["id"]: entry for entry in written["providers"]}
+                self.assertEqual(provider_map["opencode"]["cookieSource"], "off")
+
+    def test_config_save_json_rejects_non_object_payload(self):
+        with self.assertRaises(SystemExit):
+            main(["config-save-json", "[]"])
+
+    def test_config_save_json_rejects_sensitive_fields_over_argv(self):
+        raw = {"providers": [{"id": "copilot", "apiKey": "gho_test"}]}
+        with self.assertRaises(SystemExit):
+            main(["config-save-json", json.dumps(raw)])
+
+    def test_config_save_json_preserves_existing_secret_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            config_dir = home / ".config" / "ai-usage-monitor"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            existing = {
+                "version": 1,
+                "refreshInterval": 60,
+                "overviewProviderIds": [],
+                "providers": [
+                    {
+                        "id": "copilot",
+                        "enabled": True,
+                        "source": "api",
+                        "apiKey": "gho_existing",
+                    }
+                ],
+            }
+            (config_dir / "config.json").write_text(json.dumps(existing))
+            incoming = {
+                "providers": [{"id": "copilot", "enabled": False, "source": "api"}]
+            }
+            with mock.patch("pathlib.Path.home", return_value=home):
+                main(["config-save-json", json.dumps(incoming)])
+                written = json.loads((config_dir / "config.json").read_text())
+            provider_map = {entry["id"]: entry for entry in written["providers"]}
+            self.assertEqual(provider_map["copilot"]["apiKey"], "gho_existing")
+            self.assertFalse(provider_map["copilot"]["enabled"])
+
+    def test_config_set_provider_rejects_sensitive_field_over_argv(self):
+        with self.assertRaises(SystemExit):
+            main(["config-set-provider", "copilot", "apiKey", "gho_test"])
+
+    def test_config_save_json_returns_sanitized_config_for_followup_saves(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            config_dir = home / ".config" / "ai-usage-monitor"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            existing = {
+                "version": 1,
+                "refreshInterval": 60,
+                "overviewProviderIds": [],
+                "providers": [
+                    {
+                        "id": "copilot",
+                        "enabled": True,
+                        "source": "api",
+                        "apiKey": "gho_existing",
+                    }
+                ],
+            }
+            (config_dir / "config.json").write_text(json.dumps(existing))
+            incoming = {
+                "providers": [{"id": "copilot", "enabled": False, "source": "api"}]
+            }
+
+            with mock.patch("pathlib.Path.home", return_value=home):
+                with mock.patch("builtins.print") as print_mock:
+                    main(["config-save-json", json.dumps(incoming)])
+                first_payload = json.loads(print_mock.call_args[0][0])
+                self.assertNotIn(
+                    "apiKey",
+                    {
+                        entry["id"]: entry
+                        for entry in first_payload["config"]["providers"]
+                    }["copilot"],
+                )
+                main(["config-save-json", json.dumps(first_payload["config"])])
 
 
 if __name__ == "__main__":

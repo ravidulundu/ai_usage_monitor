@@ -75,6 +75,33 @@
         "activeSourceLabel": "Active API",
         "sourceStatusLabel": "Status: Unavailable"
       }
+    },
+    {
+      "name": "provider_disabled_status",
+      "descriptor": {
+        "id": "sample-hybrid",
+        "displayName": "Sample Hybrid",
+        "sourceModes": ["auto", "cli", "api"],
+        "preferredSourcePolicy": "local_first"
+      },
+      "settings": {
+        "source": "auto"
+      },
+      "provider": {
+        "id": "sample-hybrid",
+        "displayName": "Sample Hybrid",
+        "enabled": false,
+        "installed": false,
+        "authenticated": false,
+        "status": "disabled",
+        "source": "auto"
+      },
+      "expect": {
+        "canonicalMode": "unavailable",
+        "sourceModeLabel": "Unavailable",
+        "activeSourceLabel": "Active AUTO",
+        "sourceStatusLabel": "Status: Disabled"
+      }
     }
   ]
 }

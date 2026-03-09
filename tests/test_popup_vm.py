@@ -362,6 +362,54 @@ class PopupViewModelTests(unittest.TestCase):
         self.assertEqual(model_metric["rightText"], "—")
         self.assertEqual(model_metric["tone"], "accent")
 
+    def test_gemini_bucket_metrics_only_show_active_model(self):
+        state = AppState(
+            providers=[
+                ProviderState(
+                    id="gemini",
+                    display_name="Gemini CLI",
+                    installed=True,
+                    enabled=True,
+                    source="api",
+                    primary_metric=MetricWindow("Pro", 12, "2099-01-01T00:00:00+00:00"),
+                    secondary_metric=MetricWindow(
+                        "Flash", 33, "2099-01-02T00:00:00+00:00"
+                    ),
+                    extras={
+                        "model": "gemini-3-pro-preview",
+                        "primaryModel": "gemini-2.5-pro",
+                        "buckets": [
+                            {
+                                "model": "gemini-2.0-flash",
+                                "used_pct": 10,
+                                "reset_time": "2099-01-03T00:00:00+00:00",
+                            },
+                            {
+                                "model": "gemini-2.5-pro",
+                                "used_pct": 21,
+                                "reset_time": "2099-01-03T00:00:00+00:00",
+                            },
+                            {
+                                "model": "gemini-3-pro-preview",
+                                "used_pct": 44,
+                                "reset_time": "2099-01-03T00:00:00+00:00",
+                            },
+                        ],
+                    },
+                )
+            ],
+            overview_provider_ids=[],
+            updated_at="2099-01-01T00:00:00+00:00",
+        )
+
+        payload = build_popup_view_model(state, refresh_interval_seconds=60)
+        provider = payload["popup"]["providers"][0]
+        model_metrics = [m for m in provider["metrics"] if m["kind"] == "model"]
+
+        self.assertEqual(len(model_metrics), 1)
+        self.assertEqual(model_metrics[0]["label"], "gemini-3-pro-preview")
+        self.assertEqual(model_metrics[0]["leftText"], "44% used")
+
     def test_weekly_pace_secondary_text_includes_deficit_and_runout_projection(self):
         now = datetime.now(timezone.utc)
         state = AppState(
@@ -698,6 +746,14 @@ class PopupViewModelTests(unittest.TestCase):
                     enabled=True,
                     source="api",
                     source_model=source_model,
+                    metadata={
+                        "identity": {
+                            "changed": True,
+                            "sourceChanged": True,
+                            "accountChanged": False,
+                        }
+                    },
+                    extras={"identityChanged": True, "sourceSwitched": True},
                 )
             ],
             overview_provider_ids=[],
@@ -713,6 +769,65 @@ class PopupViewModelTests(unittest.TestCase):
         self.assertEqual(
             source_presentation["unavailableReason"]["code"], "source_switched"
         )
+
+    def test_popup_provider_keeps_metrics_visible_for_stable_fallback_source(self):
+        source_model = {
+            "canonicalMode": "hybrid",
+            "providerCapabilities": {
+                "supportsLocalCli": True,
+                "supportsApi": True,
+                "supportsWeb": False,
+            },
+            "sourceStrategy": {
+                "preferredSource": "cli",
+                "resolvedSource": "api",
+                "fallbackReason": "local_unavailable",
+                "resolutionReason": "preferred_source_unavailable",
+                "fallbackActive": True,
+            },
+            "availability": {
+                "localToolInstalled": False,
+                "apiKeyPresent": True,
+                "authValid": True,
+                "rateLimitState": "ok",
+            },
+            "sourceLabel": "Hybrid",
+            "activeSource": "api",
+            "fallbackState": {"active": True},
+            "sourceDetails": "Preferred CLI · Active API · Fallback active",
+        }
+        state = AppState(
+            providers=[
+                ProviderState(
+                    id="opencode",
+                    display_name="OpenCode",
+                    installed=True,
+                    enabled=True,
+                    source="api",
+                    source_model=source_model,
+                    primary_metric=MetricWindow("5h", 42, "2099-01-01T00:00:00+00:00"),
+                    secondary_metric=MetricWindow(
+                        "7d", 61, "2099-01-02T00:00:00+00:00"
+                    ),
+                )
+            ],
+            overview_provider_ids=[],
+            updated_at="2099-01-01T00:00:00+00:00",
+        )
+        payload = build_popup_view_model(state, refresh_interval_seconds=60)
+        provider = payload["popup"]["providers"][0]
+        session_metric = next(
+            item for item in provider["metrics"] if item["kind"] == "session"
+        )
+        weekly_metric = next(
+            item for item in provider["metrics"] if item["kind"] == "weekly"
+        )
+
+        self.assertIsNone(provider["sourcePresentation"]["unavailableReason"])
+        self.assertTrue(session_metric["available"])
+        self.assertTrue(weekly_metric["available"])
+        self.assertEqual(session_metric["leftText"], "42% used")
+        self.assertEqual(weekly_metric["leftText"], "61% used")
 
     def test_source_presentation_active_source_label_is_canonical(self):
         state = AppState(
@@ -778,6 +893,39 @@ class PopupViewModelTests(unittest.TestCase):
             by_id["openrouter"]["sourcePresentation"]["activeSourceLabel"],
             "Unavailable",
         )
+
+    def test_source_presentation_active_source_label_is_web_for_web_source(self):
+        state = AppState(
+            providers=[
+                ProviderState(
+                    id="opencode",
+                    display_name="OpenCode",
+                    installed=True,
+                    enabled=True,
+                    source="web",
+                    source_model={
+                        "canonicalMode": "api",
+                        "sourceLabel": "Web",
+                        "sourceStrategy": {
+                            "resolvedSource": "web",
+                            "fallbackActive": False,
+                        },
+                        "providerCapabilities": {
+                            "supportsLocalCli": False,
+                            "supportsApi": False,
+                            "supportsWeb": True,
+                        },
+                        "availability": {"apiConfigured": True, "authValid": True},
+                    },
+                )
+            ],
+            overview_provider_ids=[],
+            updated_at="2099-01-01T00:00:00+00:00",
+        )
+
+        payload = build_popup_view_model(state, refresh_interval_seconds=60)
+        provider = payload["popup"]["providers"][0]
+        self.assertEqual(provider["sourcePresentation"]["activeSourceLabel"], "Web")
 
     def test_popup_provider_exposes_incident_status_separately_from_refresh_failure(
         self,

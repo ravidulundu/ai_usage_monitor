@@ -4,22 +4,25 @@ from typing import Any
 
 _LOCAL_IDS = {"cli", "local"}
 _API_IDS = {"api"}
-_WEB_IDS = {"web", "remote"}
+_WEB_IDS = {"web"}
 _OAUTH_IDS = {"oauth"}
 _LOCAL_RUNTIME_IDS = _LOCAL_IDS | _OAUTH_IDS
 _REMOTE_RUNTIME_IDS = _API_IDS | _WEB_IDS
 
 _POLICY_ORDER: dict[str, tuple[str, ...]] = {
-    "local_first": ("cli", "local", "oauth", "api", "web", "remote", "probe"),
-    "api_first": ("api", "web", "remote", "oauth", "cli", "local", "probe"),
-    "web_first": ("web", "remote", "api", "oauth", "cli", "local", "probe"),
-    "oauth_first": ("oauth", "cli", "local", "api", "web", "remote", "probe"),
-    "auto": ("cli", "local", "oauth", "api", "web", "remote", "probe"),
+    "local_first": ("cli", "local", "oauth", "api", "web", "probe"),
+    "api_first": ("api", "web", "oauth", "cli", "local", "probe"),
+    "web_first": ("web", "api", "oauth", "cli", "local", "probe"),
+    "oauth_first": ("oauth", "cli", "local", "api", "web", "probe"),
+    "auto": ("cli", "local", "oauth", "api", "web", "probe"),
 }
 
 
 def _norm(value: Any) -> str:
-    return str(value or "").strip().lower()
+    normalized = str(value or "").strip().lower()
+    if normalized == "remote":
+        return "web"
+    return normalized
 
 
 def _canonical_kind(source_id: str) -> str:

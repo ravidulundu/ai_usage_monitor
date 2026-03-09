@@ -86,6 +86,40 @@ class OpenCodeProviderTests(unittest.TestCase):
         self.assertEqual(state.source, "web")
         self.assertIsNotNone(state.primary_metric)
         self.assertIsNotNone(state.secondary_metric)
+        self.assertEqual(usage_mock.call_count, 1)
+
+    def test_collect_opencode_routes_web_flow_through_helper(self):
+        state = mock.Mock(source="web", installed=True)
+        with mock.patch(
+            "core.ai_usage_monitor.providers.opencode._cookie_header",
+            return_value=("auth=1", "manual"),
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.providers.opencode._collect_opencode_web",
+                return_value=(
+                    {"installed": True, "rolling_used_pct": 42, "weekly_used_pct": 61},
+                    state,
+                ),
+            ) as web_mock:
+                legacy, returned_state = collect_opencode({"source": "auto"})
+
+        self.assertTrue(legacy["installed"])
+        self.assertIs(returned_state, state)
+        self.assertEqual(web_mock.call_count, 1)
+
+    def test_collect_opencode_web_without_cookie_does_not_fallback_to_local_cli(self):
+        with mock.patch(
+            "core.ai_usage_monitor.providers.opencode._cookie_header",
+            return_value=(None, None),
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.providers.opencode._has_local_opencode_install",
+                return_value=True,
+            ):
+                legacy, state = collect_opencode({"source": "web"})
+
+        self.assertFalse(legacy["installed"])
+        self.assertEqual(state.source, "web")
 
     def test_local_auth_type_reads_opencode_auth_file(self):
         with tempfile.TemporaryDirectory() as tmp:

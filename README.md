@@ -30,7 +30,7 @@ Only providers that currently have approved `@lobehub/icons` support are exposed
 | Vertex AI | `Vertex` | `oauth` | Google ADC / OAuth |
 | OpenRouter | `OpenRouter` | `api` | API key |
 | Ollama | `Ollama` | `web` | Cookie-based web usage parsing |
-| OpenCode | `OpenCode` | `web` | Cookie-based web usage parsing |
+| OpenCode | `OpenCode` | `auto`, `cli`, `web` | Local-first (`auto`) with optional explicit web quota path |
 | z.ai | `z.ai` | `api` | API-based usage |
 | Kilo Code | `Kilo` | `auto`, `api`, `cli` | API or local auth file |
 | MiniMax | `MiniMax` | `auto`, `web`, `api` | API or cookie-based web usage |
@@ -43,6 +43,8 @@ Currently hidden from the active UI surface:
 - `Kimi K2`
 
 They are intentionally not surfaced in the shipped UI because the current rule is: if a provider does not have an allowed icon source in the chosen icon system, it is not exposed in the desktop product.
+
+These dormant providers are treated as archived implementations, not active runtime features. They are excluded from the shipped provider registry and fetch strategy surface.
 
 ## Platform Support
 
@@ -218,7 +220,7 @@ Both desktops use the same shared config file:
     { "id": "vertexai", "enabled": true, "source": "oauth", "projectId": "" },
     { "id": "openrouter", "enabled": true, "source": "api", "apiKey": "" },
     { "id": "ollama", "enabled": true, "source": "web" },
-    { "id": "opencode", "enabled": true, "source": "web" },
+    { "id": "opencode", "enabled": true, "source": "local_cli" },
     { "id": "zai", "enabled": true, "source": "api", "apiKey": "" },
     { "id": "kilo", "enabled": true, "source": "auto", "apiKey": "" },
     { "id": "minimax", "enabled": true, "source": "auto", "apiKey": "" }

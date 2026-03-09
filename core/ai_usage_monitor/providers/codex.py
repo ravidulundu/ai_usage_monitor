@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-import glob
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from core.ai_usage_monitor.local_usage import scan_codex_local_usage
 from core.ai_usage_monitor.models import LocalUsageSnapshot, MetricWindow, ProviderState
 from core.ai_usage_monitor.providers.base import ProviderBranding, ProviderDescriptor
+from core.ai_usage_monitor.runtime_cache import (
+    load_runtime_cache,
+    runtime_cache_path,
+    save_runtime_cache,
+)
 from core.ai_usage_monitor.shared.time_utils import unix_to_iso
 from core.ai_usage_monitor.status import fetch_statuspage
 
@@ -65,35 +68,23 @@ def _to_iso(dt: datetime | None) -> str | None:
 
 
 def _codex_identity_state_path() -> Path:
-    return Path.home() / ".cache" / "ai-usage-monitor" / "codex_identity_state.json"
+    return runtime_cache_path("codex_identity_state.json")
 
 
 def _load_codex_identity_state() -> dict[str, Any]:
-    path = _codex_identity_state_path()
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text())
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return load_runtime_cache("codex_identity_state.json")
 
 
 def _save_codex_identity_state(
     identity_key: str, account_id: str, switch_detected_at: str | None
 ) -> None:
-    path = _codex_identity_state_path()
     payload = {
         "version": 1,
         "identityKey": identity_key,
         "accountId": account_id,
         "switchDetectedAt": switch_detected_at,
     }
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
-    except OSError:
-        return
+    save_runtime_cache("codex_identity_state.json", payload)
 
 
 def _load_codex_account_identity() -> dict[str, str]:
@@ -194,9 +185,7 @@ def normalize_codex_rate_limits(
         installed=True,
         authenticated=True,
         source="cli",
-        local_usage=local_usage
-        if local_usage is not None
-        else scan_codex_local_usage(),
+        local_usage=local_usage,
         primary_metric=primary_metric,
         secondary_metric=secondary_metric,
         extras={
@@ -211,11 +200,16 @@ def normalize_codex_rate_limits(
 
 
 def _latest_token_count_snapshot(
-    sessions_dir: Path, min_timestamp: str | datetime | None = None
-) -> tuple[dict | None, str]:
+    sessions_dir: Path,
+    min_timestamp: str | datetime | None = None,
+    files: list[Path] | None = None,
+) -> tuple[dict | None, str, LocalUsageSnapshot | None]:
     latest_payload = None
     latest_model = ""
     latest_timestamp: datetime | None = None
+    latest_session_tokens: int | None = None
+    day_totals: dict[str, int] = {}
+    since = (datetime.now(timezone.utc) - timedelta(days=29)).date()
 
     cutoff = (
         _parse_timestamp(min_timestamp)
@@ -223,9 +217,13 @@ def _latest_token_count_snapshot(
         else min_timestamp
     )
 
-    files = sorted(glob.glob(str(sessions_dir / "**" / "*.jsonl"), recursive=True))
-    for session_file in files:
+    session_files = (
+        files if files is not None else sorted(sessions_dir.rglob("*.jsonl"))
+    )
+    for session_file in session_files:
         current_model = ""
+        file_latest_ts: datetime | None = None
+        file_latest_total: int | None = None
         try:
             with open(session_file, errors="replace") as handle:
                 for line in handle:
@@ -264,6 +262,33 @@ def _latest_token_count_snapshot(
                     dt = _parse_timestamp(timestamp)
                     if cutoff and (dt is None or dt < cutoff):
                         continue
+                    if dt is None:
+                        continue
+
+                    info = (
+                        payload.get("info", {})
+                        if isinstance(payload.get("info"), dict)
+                        else {}
+                    )
+                    total_usage = (
+                        info.get("total_token_usage", {})
+                        if isinstance(info.get("total_token_usage"), dict)
+                        else {}
+                    )
+                    total_tokens_raw = total_usage.get("total_tokens")
+                    try:
+                        total_tokens = (
+                            int(total_tokens_raw)
+                            if total_tokens_raw is not None
+                            else None
+                        )
+                    except (TypeError, ValueError):
+                        total_tokens = None
+                    if total_tokens is not None and (
+                        file_latest_ts is None or dt > file_latest_ts
+                    ):
+                        file_latest_ts = dt
+                        file_latest_total = total_tokens
 
                     if latest_payload is None:
                         latest_payload = payload
@@ -277,18 +302,29 @@ def _latest_token_count_snapshot(
                         latest_timestamp = dt
                         continue
 
-                    if (
-                        latest_timestamp is not None
-                        and dt is not None
-                        and dt >= latest_timestamp
-                    ):
+                    if latest_timestamp is not None and dt >= latest_timestamp:
                         latest_payload = payload
                         latest_model = current_model or latest_model
                         latest_timestamp = dt
         except OSError:
             continue
+        if file_latest_ts is None or file_latest_total is None:
+            continue
+        if latest_session_tokens is None or (
+            latest_timestamp is not None and file_latest_ts >= latest_timestamp
+        ):
+            latest_session_tokens = file_latest_total
+        if file_latest_ts.date() >= since:
+            day_key = file_latest_ts.date().isoformat()
+            day_totals[day_key] = day_totals.get(day_key, 0) + file_latest_total
 
-    return latest_payload, latest_model
+    local_usage = None
+    if latest_session_tokens is not None or day_totals:
+        local_usage = LocalUsageSnapshot(
+            session_tokens=latest_session_tokens,
+            last_30_days_tokens=sum(day_totals.values()) if day_totals else None,
+        )
+    return latest_payload, latest_model, local_usage
 
 
 def collect_codex(
@@ -301,8 +337,6 @@ def collect_codex(
         identity["identity_key"], identity["account_id"]
     )
     identity_extras = _identity_extras(identity, account_switched, switch_cutoff)
-    local_usage = scan_codex_local_usage(min_timestamp=switch_cutoff)
-
     legacy: dict[str, Any] = {"installed": False}
     state = ProviderState(
         id=DESCRIPTOR.id,
@@ -315,7 +349,8 @@ def collect_codex(
         state.extras = identity_extras
         return legacy, state
 
-    files = sorted(glob.glob(str(sessions_dir / "**" / "*.jsonl"), recursive=True))
+    files = sorted(sessions_dir.rglob("*.jsonl"))
+    local_usage = None
     if not files:
         return {"installed": True, "has_data": False}, ProviderState(
             id=DESCRIPTOR.id,
@@ -331,8 +366,8 @@ def collect_codex(
             ),
         )
 
-    last_token_payload, last_model = _latest_token_count_snapshot(
-        sessions_dir, min_timestamp=switch_cutoff
+    last_token_payload, last_model, local_usage = _latest_token_count_snapshot(
+        sessions_dir, min_timestamp=switch_cutoff, files=files
     )
 
     if not last_token_payload:

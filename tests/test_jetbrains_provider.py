@@ -1,6 +1,6 @@
 import unittest
 
-from core.ai_usage_monitor.providers.jetbrains import parse_jetbrains_xml
+from core.ai_usage_monitor.archived_providers.jetbrains import parse_jetbrains_xml
 
 
 class JetBrainsProviderTests(unittest.TestCase):

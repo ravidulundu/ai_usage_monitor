@@ -16,6 +16,10 @@ from core.ai_usage_monitor.shared.http_failures import (
 )
 from core.ai_usage_monitor.status import fetch_statuspage
 
+CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+CLAUDE_STATUS_API_URL = "https://status.claude.com"
+CLAUDE_STATUS_PAGE_URL = "https://status.claude.com/"
+
 
 DESCRIPTOR = ProviderDescriptor(
     id="claude",
@@ -68,102 +72,101 @@ def _claude_account_identity(creds: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def collect_claude(
-    settings: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], ProviderState]:
-    _ = settings
+def _claude_extras(identity: dict[str, str]) -> dict[str, Any]:
+    return {
+        **({"accountId": identity["account_id"]} if identity.get("account_id") else {}),
+        **({"email": identity["email"]} if identity.get("email") else {}),
+    }
+
+
+def _claude_incident() -> dict[str, Any] | None:
+    return fetch_statuspage(CLAUDE_STATUS_API_URL, CLAUDE_STATUS_PAGE_URL)
+
+
+def _load_claude_credentials() -> dict[str, Any] | None:
     creds_path = Path.home() / ".claude" / ".credentials.json"
-    legacy: dict[str, Any] = {"installed": False}
-    identity: dict[str, str] = {"account_id": "", "email": ""}
-    state = ProviderState(
-        id=DESCRIPTOR.id,
-        display_name=DESCRIPTOR.display_name,
-        installed=False,
-        source="oauth",
-    )
-
     if not creds_path.exists():
-        return legacy, state
-
+        return None
     try:
         creds_raw = json.loads(creds_path.read_text())
-        creds: dict[str, Any] = creds_raw if isinstance(creds_raw, dict) else {}
-        identity = _claude_account_identity(creds)
-        token = creds["claudeAiOauth"]["accessToken"]
-        req = urllib.request.Request(
-            "https://api.anthropic.com/api/oauth/usage",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "anthropic-beta": "oauth-2025-04-20",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data_raw = json.loads(resp.read())
-        data: dict[str, Any] = data_raw if isinstance(data_raw, dict) else {}
+    except Exception:
+        return {}
+    return creds_raw if isinstance(creds_raw, dict) else {}
 
-        five_hour_raw = data.get("five_hour")
-        five_hour: dict[str, Any] = (
-            five_hour_raw if isinstance(five_hour_raw, dict) else {}
-        )
-        seven_day_raw = data.get("seven_day")
-        seven_day: dict[str, Any] = (
-            seven_day_raw if isinstance(seven_day_raw, dict) else {}
-        )
-        five_hour_pct = round(float(five_hour.get("utilization") or 0))
-        five_hour_reset = (
+
+def _fetch_claude_usage(token: str) -> dict[str, Any]:
+    req = urllib.request.Request(
+        CLAUDE_USAGE_URL,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "anthropic-beta": "oauth-2025-04-20",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data_raw = json.loads(resp.read())
+    return data_raw if isinstance(data_raw, dict) else {}
+
+
+def _usage_window(data: dict[str, Any], key: str) -> dict[str, Any]:
+    raw_window = data.get(key)
+    return raw_window if isinstance(raw_window, dict) else {}
+
+
+def _build_claude_legacy(data: dict[str, Any]) -> dict[str, Any]:
+    five_hour = _usage_window(data, "five_hour")
+    seven_day = _usage_window(data, "seven_day")
+    return {
+        "installed": True,
+        "five_hour_pct": round(float(five_hour.get("utilization") or 0)),
+        "five_hour_reset": (
             str(five_hour.get("resets_at")) if five_hour.get("resets_at") else None
-        )
-        seven_day_pct = (
+        ),
+        "seven_day_pct": (
             round(float(seven_day.get("utilization") or 0)) if seven_day else None
-        )
-        seven_day_reset = (
+        ),
+        "seven_day_reset": (
             str(seven_day.get("resets_at"))
             if seven_day and seven_day.get("resets_at")
             else None
-        )
-        legacy = {
-            "installed": True,
-            "five_hour_pct": five_hour_pct,
-            "five_hour_reset": five_hour_reset,
-            "seven_day_pct": seven_day_pct,
-            "seven_day_reset": seven_day_reset,
-        }
-        state = ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=True,
-            authenticated=True,
-            source="oauth",
-            local_usage=scan_claude_local_usage(),
-            primary_metric=MetricWindow(
-                "5h", legacy["five_hour_pct"], legacy["five_hour_reset"]
-            ),
-            secondary_metric=MetricWindow(
-                "7d", legacy["seven_day_pct"], legacy["seven_day_reset"]
-            )
-            if legacy["seven_day_pct"] is not None
-            else None,
-            extras={
-                **(
-                    {"accountId": identity["account_id"]}
-                    if identity["account_id"]
-                    else {}
-                ),
-                **({"email": identity["email"]} if identity["email"] else {}),
-            },
-            incident=fetch_statuspage(
-                "https://status.claude.com", "https://status.claude.com/"
-            ),
-        )
-        return legacy, state
-    except urllib.error.HTTPError as err:
-        legacy = {
-            "installed": True,
-            **classify_http_failure("claude", err.code, read_http_error_body(err)),
-        }
-    except Exception as err:
-        legacy = {"installed": True, **classify_exception_failure(err)}
+        ),
+    }
 
+
+def _claude_success_state(
+    *,
+    legacy: dict[str, Any],
+    identity: dict[str, str],
+    local_usage: Any,
+    incident: dict[str, Any] | None,
+) -> tuple[dict[str, Any], ProviderState]:
+    state = ProviderState(
+        id=DESCRIPTOR.id,
+        display_name=DESCRIPTOR.display_name,
+        installed=True,
+        authenticated=True,
+        source="oauth",
+        local_usage=local_usage,
+        primary_metric=MetricWindow(
+            "5h", legacy["five_hour_pct"], legacy["five_hour_reset"]
+        ),
+        secondary_metric=MetricWindow(
+            "7d", legacy["seven_day_pct"], legacy["seven_day_reset"]
+        )
+        if legacy["seven_day_pct"] is not None
+        else None,
+        extras=_claude_extras(identity),
+        incident=incident,
+    )
+    return legacy, state
+
+
+def _claude_error_state(
+    *,
+    legacy: dict[str, Any],
+    identity: dict[str, str],
+    local_usage: Any,
+    incident: dict[str, Any] | None,
+) -> tuple[dict[str, Any], ProviderState]:
     error_text = legacy.get("error")
     state = ProviderState(
         id=DESCRIPTOR.id,
@@ -172,18 +175,51 @@ def collect_claude(
         authenticated=str(legacy.get("fail_reason") or "") != "auth_required",
         status="error",
         source="oauth",
-        local_usage=scan_claude_local_usage(),
+        local_usage=local_usage,
         error=str(error_text) if error_text is not None else None,
-        extras={
-            **(
-                {"accountId": identity["account_id"]}
-                if identity.get("account_id")
-                else {}
-            ),
-            **({"email": identity["email"]} if identity.get("email") else {}),
-        },
-        incident=fetch_statuspage(
-            "https://status.claude.com", "https://status.claude.com/"
-        ),
+        extras=_claude_extras(identity),
+        incident=incident,
     )
     return legacy, state
+
+
+def collect_claude(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
+    _ = settings
+    legacy: dict[str, Any] = {"installed": False}
+    identity: dict[str, str] = {"account_id": "", "email": ""}
+    incident = _claude_incident()
+    local_usage = scan_claude_local_usage()
+    creds = _load_claude_credentials()
+    if creds is None:
+        return legacy, ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source="oauth",
+        )
+
+    try:
+        identity = _claude_account_identity(creds)
+        token = creds["claudeAiOauth"]["accessToken"]
+        legacy = _build_claude_legacy(_fetch_claude_usage(token))
+        return _claude_success_state(
+            legacy=legacy,
+            identity=identity,
+            local_usage=local_usage,
+            incident=incident,
+        )
+    except urllib.error.HTTPError as err:
+        legacy = {
+            "installed": True,
+            **classify_http_failure("claude", err.code, read_http_error_body(err)),
+        }
+    except Exception as err:
+        legacy = {"installed": True, **classify_exception_failure(err)}
+    return _claude_error_state(
+        legacy=legacy,
+        identity=identity,
+        local_usage=local_usage,
+        incident=incident,
+    )

@@ -22,12 +22,23 @@ from core.ai_usage_monitor.shared.http_failures import (
     read_http_error_body,
 )
 
+USAGE_FILTER = (
+    'metric.type="serviceruntime.googleapis.com/quota/allocation/usage" '
+    'AND resource.type="consumer_quota" '
+    'AND resource.labels.service="aiplatform.googleapis.com"'
+)
+LIMIT_FILTER = (
+    'metric.type="serviceruntime.googleapis.com/quota/limit" '
+    'AND resource.type="consumer_quota" '
+    'AND resource.labels.service="aiplatform.googleapis.com"'
+)
+
 
 DESCRIPTOR = ProviderDescriptor(
     id="vertexai",
     display_name="Vertex AI",
     short_name="Vertex",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("oauth",),
     config_fields=(
         ProviderConfigField("projectId", "Project ID", placeholder="my-gcp-project"),
@@ -211,79 +222,85 @@ def _compute_highest_usage_percent(
     return best
 
 
-def collect_vertexai(
-    settings: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], ProviderState]:
-    adc = _load_adc()
-    if not adc:
-        return {"installed": False}, ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=False,
-            source="oauth",
-        )
-
-    project_id = _project_id_from_sources(settings)
+def _vertex_extras(project_id: str | None) -> dict[str, Any]:
     if not project_id:
-        legacy = {
-            "installed": True,
-            "error": "No Google Cloud project configured.",
-            "fail_reason": "invalid_credentials",
-        }
-        state = ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=True,
-            authenticated=False,
-            status="error",
-            source="oauth",
-            local_usage=scan_vertex_local_usage(),
-            error=str(legacy["error"]),
-        )
-        return legacy, state
+        return {}
+    return {
+        "plan": project_id,
+        "projectId": project_id,
+        "accountId": project_id,
+    }
 
-    try:
-        access_token = _access_token_from_adc(adc)
-        if not access_token:
-            raise KeyError("access_token")
 
-        usage_filter = 'metric.type="serviceruntime.googleapis.com/quota/allocation/usage" AND resource.type="consumer_quota" AND resource.labels.service="aiplatform.googleapis.com"'
-        limit_filter = 'metric.type="serviceruntime.googleapis.com/quota/limit" AND resource.type="consumer_quota" AND resource.labels.service="aiplatform.googleapis.com"'
-        usage_payload = _fetch_timeseries(access_token, project_id, usage_filter)
-        limit_payload = _fetch_timeseries(access_token, project_id, limit_filter)
-        highest = _compute_highest_usage_percent(usage_payload, limit_payload)
+def _vertex_not_installed() -> tuple[dict[str, Any], ProviderState]:
+    return {"installed": False}, ProviderState(
+        id=DESCRIPTOR.id,
+        display_name=DESCRIPTOR.display_name,
+        installed=False,
+        source="oauth",
+    )
 
-        legacy = {
-            "installed": True,
-            "project_id": project_id,
-            "account_id": project_id,
-            "used_pct": round(highest) if highest is not None else None,
-        }
-        state = ProviderState(
-            id=DESCRIPTOR.id,
-            display_name=DESCRIPTOR.display_name,
-            installed=True,
-            authenticated=True,
-            source="oauth",
-            primary_metric=MetricWindow("Quota", highest or 0, None)
-            if highest is not None
-            else None,
-            local_usage=scan_vertex_local_usage(),
-            extras={
-                "plan": project_id,
-                "projectId": project_id,
-                "accountId": project_id,
-            },
-        )
-        return legacy, state
-    except urllib.error.HTTPError as err:
-        legacy = {
-            "installed": True,
-            **classify_http_failure("vertexai", err.code, read_http_error_body(err)),
-        }
-    except Exception as err:
-        legacy = {"installed": True, **classify_exception_failure(err)}
 
+def _vertex_project_missing(
+    local_usage: Any,
+) -> tuple[dict[str, Any], ProviderState]:
+    legacy = {
+        "installed": True,
+        "error": "No Google Cloud project configured.",
+        "fail_reason": "invalid_credentials",
+    }
+    state = ProviderState(
+        id=DESCRIPTOR.id,
+        display_name=DESCRIPTOR.display_name,
+        installed=True,
+        authenticated=False,
+        status="error",
+        source="oauth",
+        local_usage=local_usage,
+        error=str(legacy["error"]),
+    )
+    return legacy, state
+
+
+def _fetch_vertex_quota_percent(access_token: str, project_id: str) -> float | None:
+    usage_payload = _fetch_timeseries(access_token, project_id, USAGE_FILTER)
+    limit_payload = _fetch_timeseries(access_token, project_id, LIMIT_FILTER)
+    return _compute_highest_usage_percent(usage_payload, limit_payload)
+
+
+def _vertex_success_state(
+    *,
+    project_id: str,
+    highest: float | None,
+    local_usage: Any,
+) -> tuple[dict[str, Any], ProviderState]:
+    legacy = {
+        "installed": True,
+        "project_id": project_id,
+        "account_id": project_id,
+        "used_pct": round(highest) if highest is not None else None,
+    }
+    state = ProviderState(
+        id=DESCRIPTOR.id,
+        display_name=DESCRIPTOR.display_name,
+        installed=True,
+        authenticated=True,
+        source="oauth",
+        primary_metric=MetricWindow("Quota", highest or 0, None)
+        if highest is not None
+        else None,
+        local_usage=local_usage,
+        extras=_vertex_extras(project_id),
+    )
+    return legacy, state
+
+
+def _vertex_error_state(
+    *,
+    legacy: dict[str, Any],
+    project_id: str | None,
+    local_usage: Any,
+) -> tuple[dict[str, Any], ProviderState]:
     error_text = legacy.get("error")
     state = ProviderState(
         id=DESCRIPTOR.id,
@@ -292,10 +309,44 @@ def collect_vertexai(
         authenticated=str(legacy.get("fail_reason") or "") != "auth_required",
         status="error",
         source="oauth",
-        local_usage=scan_vertex_local_usage(),
+        local_usage=local_usage,
         error=str(error_text) if error_text is not None else None,
-        extras={"plan": project_id, "projectId": project_id, "accountId": project_id}
-        if project_id
-        else {},
+        extras=_vertex_extras(project_id),
     )
     return legacy, state
+
+
+def collect_vertexai(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
+    adc = _load_adc()
+    if not adc:
+        return _vertex_not_installed()
+
+    local_usage = scan_vertex_local_usage()
+    project_id = _project_id_from_sources(settings)
+    if not project_id:
+        return _vertex_project_missing(local_usage)
+
+    try:
+        access_token = _access_token_from_adc(adc)
+        if not access_token:
+            raise KeyError("access_token")
+        highest = _fetch_vertex_quota_percent(access_token, project_id)
+        return _vertex_success_state(
+            project_id=project_id,
+            highest=highest,
+            local_usage=local_usage,
+        )
+    except urllib.error.HTTPError as err:
+        legacy = {
+            "installed": True,
+            **classify_http_failure("vertexai", err.code, read_http_error_body(err)),
+        }
+    except Exception as err:
+        legacy = {"installed": True, **classify_exception_failure(err)}
+    return _vertex_error_state(
+        legacy=legacy,
+        project_id=project_id,
+        local_usage=local_usage,
+    )

@@ -1,7 +1,6 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import GLib from 'gi://GLib';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -32,6 +31,9 @@ class AIUsageIndicator extends PanelMenu.Button {
         this._activeProcess = null;
         this._panelRingRepaintId = null;
         this._menuOpenStateChangedId = null;
+        this._configMonitor = null;
+        this._configMonitorChangedId = null;
+        this._configRefreshTimeoutId = null;
 
         this._popupVm = {};
         this._popupTabs = [];
@@ -85,7 +87,7 @@ class AIUsageIndicator extends PanelMenu.Button {
         this._menuOpenStateChangedId = this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) {
                 this._updateContent();
-                this._refresh();
+                this._refresh(true);
                 return;
             }
             this._clearIdentityRefreshTimeout();
@@ -95,8 +97,9 @@ class AIUsageIndicator extends PanelMenu.Button {
 
         this._settingsChangedId = this._settings.connect('changed', this._onSettingsChanged.bind(this));
 
-        this._refresh();
+        this._refresh(true);
         this._scheduleRefresh();
+        this._startConfigMonitor();
     }
 
     _buildMenu() {
@@ -113,20 +116,6 @@ class AIUsageIndicator extends PanelMenu.Button {
             this._scheduleRefresh();
         this._updatePanelIcon();
         this._updateContent();
-    }
-
-    _clearRefreshTimeout() {
-        if (!this._timeoutId)
-            return;
-        GLib.source_remove(this._timeoutId);
-        this._timeoutId = null;
-    }
-
-    _clearIdentityRefreshTimeout() {
-        if (!this._identityRefreshTimeoutId)
-            return;
-        GLib.source_remove(this._identityRefreshTimeoutId);
-        this._identityRefreshTimeoutId = null;
     }
 
     destroy() {
@@ -149,6 +138,7 @@ class AIUsageIndicator extends PanelMenu.Button {
 
         this._clearIdentityRefreshTimeout();
         this._clearRefreshTimeout();
+        this._clearConfigMonitor();
 
         if (this._settingsChangedId) {
             this._settings.disconnect(this._settingsChangedId);
