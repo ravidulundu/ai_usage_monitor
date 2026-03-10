@@ -4,6 +4,10 @@ from typing import Any, Callable, cast
 
 from core.ai_usage_monitor.identity import apply_identity_to_provider
 from core.ai_usage_monitor.models import ProviderState
+from core.ai_usage_monitor.provider_freshness import (
+    load_cached_provider_result,
+    store_cached_provider_result,
+)
 from core.ai_usage_monitor.providers.base import ProviderDescriptor
 from core.ai_usage_monitor.providers.fetch_strategies import fetch_strategy_for
 from core.ai_usage_monitor.providers.registry import ProviderRegistry
@@ -60,63 +64,13 @@ def disabled_provider_state(
     )
 
 
-def collect_provider(
-    provider_id: str,
-    collector: ProviderCollector,
+def configured_source_value(
+    source_plan: dict[str, Any],
     settings: dict[str, Any],
     descriptor: ProviderDescriptor | None,
-) -> tuple[dict[str, Any], ProviderState, str, bool]:
-    source_plan = resolve_provider_source_plan(
-        descriptor, settings, configured_source=str(settings.get("source", ""))
-    )
-    base_settings = dict(settings or {})
-    preferred_source = str(source_plan.get("preferredSource") or "").strip()
-    attempt_sources = source_attempt_sequence(source_plan, preferred_source)
-
-    enabled = bool(
-        settings.get("enabled", descriptor.default_enabled if descriptor else True)
-    )
-    if enabled:
-        provider_legacy = {"installed": False}
-        provider_state = ProviderState(
-            id=provider_id,
-            display_name=descriptor.display_name if descriptor else provider_id,
-            installed=False,
-        )
-        attempts = attempt_sources or [
-            str(source_plan.get("resolvedSourceHint") or preferred_source or "")
-            .strip()
-            .lower()
-        ]
-        attempted = False
-        for attempt_source in attempts:
-            normalized_source = str(attempt_source or "").strip().lower()
-            if not normalized_source or normalized_source in {"probe", "local_cli"}:
-                continue
-            attempt_settings = dict(base_settings)
-            attempt_settings["source"] = normalized_source
-            provider_legacy, raw_state = collector(attempt_settings)
-            provider_state = cast(ProviderState, raw_state)
-            attempted = True
-            if attempt_is_authoritative(provider_state):
-                break
-
-        if not attempted:
-            fallback_source = (
-                str(source_plan.get("resolvedSourceHint") or "").strip().lower()
-            )
-            attempt_settings = dict(base_settings)
-            if fallback_source and fallback_source not in {"probe", "local_cli"}:
-                attempt_settings["source"] = fallback_source
-            provider_legacy, raw_state = collector(attempt_settings)
-            provider_state = cast(ProviderState, raw_state)
-    else:
-        provider_legacy = {"installed": False, "enabled": False}
-        provider_state = disabled_provider_state(provider_id, descriptor, settings)
-
-    provider_state.enabled = enabled
-    provider_state.metadata = dict(provider_state.metadata or {})
-    configured_source = str(
+    provider_state: ProviderState,
+) -> str:
+    return str(
         source_plan.get("preferredSource")
         or settings.get(
             "source",
@@ -125,6 +79,124 @@ def collect_provider(
             else provider_state.source or "auto",
         )
     )
+
+
+def _default_attempt_sources(
+    source_plan: dict[str, Any], preferred_source: str, attempt_sources: list[str]
+) -> list[str]:
+    if attempt_sources:
+        return attempt_sources
+    return [
+        str(source_plan.get("resolvedSourceHint") or preferred_source or "")
+        .strip()
+        .lower()
+    ]
+
+
+def _attempt_settings(
+    base_settings: dict[str, Any], attempt_source: str
+) -> dict[str, Any] | None:
+    normalized_source = str(attempt_source or "").strip().lower()
+    if not normalized_source or normalized_source in {"probe", "local_cli"}:
+        return None
+    attempt = dict(base_settings)
+    attempt["source"] = normalized_source
+    return attempt
+
+
+def _collect_attempt_result(
+    *,
+    provider_id: str,
+    collector: ProviderCollector,
+    attempt_settings: dict[str, Any],
+    force_refresh: bool,
+) -> tuple[dict[str, Any], ProviderState]:
+    cached = (
+        None
+        if force_refresh
+        else load_cached_provider_result(provider_id, attempt_settings)
+    )
+    if cached is not None:
+        return cached
+
+    provider_legacy, raw_state = collector(attempt_settings)
+    provider_state = cast(ProviderState, raw_state)
+    if not force_refresh:
+        store_cached_provider_result(
+            provider_id,
+            attempt_settings,
+            provider_legacy,
+            provider_state,
+        )
+    return provider_legacy, provider_state
+
+
+def _fallback_attempt_settings(
+    source_plan: dict[str, Any], base_settings: dict[str, Any]
+) -> dict[str, Any]:
+    fallback_source = str(source_plan.get("resolvedSourceHint") or "").strip().lower()
+    attempt = dict(base_settings)
+    if fallback_source and fallback_source not in {"probe", "local_cli"}:
+        attempt["source"] = fallback_source
+    return attempt
+
+
+def _collect_enabled_provider(
+    *,
+    provider_id: str,
+    collector: ProviderCollector,
+    base_settings: dict[str, Any],
+    source_plan: dict[str, Any],
+    preferred_source: str,
+    attempt_sources: list[str],
+    descriptor: ProviderDescriptor | None,
+    force_refresh: bool,
+) -> tuple[dict[str, Any], ProviderState]:
+    provider_legacy = {"installed": False}
+    provider_state = ProviderState(
+        id=provider_id,
+        display_name=descriptor.display_name if descriptor else provider_id,
+        installed=False,
+    )
+    attempted = False
+
+    for attempt_source in _default_attempt_sources(
+        source_plan, preferred_source, attempt_sources
+    ):
+        attempt_settings = _attempt_settings(base_settings, attempt_source)
+        if attempt_settings is None:
+            continue
+        provider_legacy, provider_state = _collect_attempt_result(
+            provider_id=provider_id,
+            collector=collector,
+            attempt_settings=attempt_settings,
+            force_refresh=force_refresh,
+        )
+        attempted = True
+        if attempt_is_authoritative(provider_state):
+            return provider_legacy, provider_state
+
+    if attempted:
+        return provider_legacy, provider_state
+
+    return _collect_attempt_result(
+        provider_id=provider_id,
+        collector=collector,
+        attempt_settings=_fallback_attempt_settings(source_plan, base_settings),
+        force_refresh=force_refresh,
+    )
+
+
+def _apply_provider_metadata(
+    *,
+    provider_id: str,
+    provider_state: ProviderState,
+    descriptor: ProviderDescriptor | None,
+    base_settings: dict[str, Any],
+    source_plan: dict[str, Any],
+    configured_source: str,
+) -> None:
+    provider_state.metadata = dict(provider_state.metadata or {})
     provider_state.metadata["configuredSource"] = configured_source
     provider_state.metadata["sourceResolutionPlan"] = source_plan
     if descriptor:
@@ -143,6 +215,55 @@ def collect_provider(
         resolution=source_plan,
     )
     provider_state.metadata["sourceModel"] = provider_state.source_model
+
+
+def collect_provider(
+    provider_id: str,
+    collector: ProviderCollector,
+    settings: dict[str, Any],
+    descriptor: ProviderDescriptor | None,
+    force_refresh: bool = False,
+) -> tuple[dict[str, Any], ProviderState, str, bool]:
+    source_plan = resolve_provider_source_plan(
+        descriptor, settings, configured_source=str(settings.get("source", ""))
+    )
+    base_settings = dict(settings or {})
+    preferred_source = str(source_plan.get("preferredSource") or "").strip()
+    attempt_sources = source_attempt_sequence(source_plan, preferred_source)
+
+    enabled = bool(
+        settings.get("enabled", descriptor.default_enabled if descriptor else True)
+    )
+    if enabled:
+        provider_legacy, provider_state = _collect_enabled_provider(
+            provider_id=provider_id,
+            collector=collector,
+            base_settings=base_settings,
+            source_plan=source_plan,
+            preferred_source=preferred_source,
+            attempt_sources=attempt_sources,
+            descriptor=descriptor,
+            force_refresh=force_refresh,
+        )
+    else:
+        provider_legacy = {"installed": False, "enabled": False}
+        provider_state = disabled_provider_state(provider_id, descriptor, settings)
+
+    provider_state.enabled = enabled
+    configured_source = configured_source_value(
+        source_plan=source_plan,
+        settings=settings,
+        descriptor=descriptor,
+        provider_state=provider_state,
+    )
+    _apply_provider_metadata(
+        provider_id=provider_id,
+        provider_state=provider_state,
+        descriptor=descriptor,
+        base_settings=base_settings,
+        source_plan=source_plan,
+        configured_source=configured_source,
+    )
     return provider_legacy, provider_state, configured_source, enabled
 
 
@@ -164,6 +285,7 @@ def build_provider_records(
     settings_map: dict[str, dict[str, Any]],
     identity_store: dict[str, Any],
     collectors: dict[str, ProviderCollector],
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     provider_records: list[dict[str, Any]] = []
     for descriptor in registry.list_descriptors():
@@ -173,7 +295,7 @@ def build_provider_records(
             continue
         settings = settings_map.get(provider_id, {})
         provider_legacy, provider_state, configured_source, enabled = collect_provider(
-            provider_id, collector, settings, descriptor
+            provider_id, collector, settings, descriptor, force_refresh=force_refresh
         )
         identity_changed = apply_identity_to_provider(
             provider_state,
@@ -224,6 +346,7 @@ def refresh_changed_provider_records(
             record["collector"],
             record["settings"],
             record["descriptor"],
+            force_refresh=True,
         )
         apply_identity_to_provider(
             provider_state,

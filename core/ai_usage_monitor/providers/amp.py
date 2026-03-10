@@ -28,7 +28,7 @@ DESCRIPTOR = ProviderDescriptor(
     id="amp",
     display_name="Amp",
     short_name="Amp",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("web",),
     config_fields=(
         ProviderConfigField(

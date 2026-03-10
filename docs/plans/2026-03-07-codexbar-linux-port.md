@@ -1,6 +1,6 @@
 # CodexBar Linux Port Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Codex:** Bu plan Codex workflow'u ile adım adım uygulanır.
 
 **Goal:** Refactor AI Usage Monitor into a Linux-native CodexBar-style product with a shared backend, unified state model, and thin KDE/GNOME frontends.
 

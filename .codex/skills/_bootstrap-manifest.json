@@ -1,0 +1,272 @@
+{
+  "project": "ai_usage_monitor",
+  "bootstrapped_at": "2026-03-09T15:35:24.875388+00:00",
+  "bootstrap_target": ".codex/skills",
+  "tooling": "Codex",
+  "versions_verified_at": "2026-03-09",
+  "tech_stack": {
+    "language": "Python 3.11 baseline",
+    "desktop_ui": "KDE Plasma 6 QML/Kirigami + GNOME Shell 45+ GJS",
+    "quality_gates": {
+      "pytest": "9.0.2",
+      "mypy": "1.19.1",
+      "ruff": "0.15.5",
+      "eslint": "10.0.3 (repo baseline currently 8.x)"
+    },
+    "tooling": [
+      "Make",
+      "npm",
+      "pre-commit"
+    ]
+  },
+  "skills_generated": [
+    {
+      "name": "project-architecture",
+      "path": ".codex/skills/project-architecture/",
+      "layer": 0,
+      "depends_on": [],
+      "domains_covered": [
+        "architecture",
+        "folder-structure",
+        "module-boundaries"
+      ]
+    },
+    {
+      "name": "python-standards",
+      "path": ".codex/skills/python-standards/",
+      "layer": 1,
+      "depends_on": [
+        "project-architecture"
+      ],
+      "domains_covered": [
+        "python",
+        "typing",
+        "module-style"
+      ]
+    },
+    {
+      "name": "security-hardening",
+      "path": ".codex/skills/security-hardening/",
+      "layer": 2,
+      "depends_on": [
+        "project-architecture",
+        "python-standards"
+      ],
+      "domains_covered": [
+        "secrets",
+        "local-auth",
+        "external-calls"
+      ]
+    },
+    {
+      "name": "error-handling",
+      "path": ".codex/skills/error-handling/",
+      "layer": 2,
+      "depends_on": [
+        "project-architecture",
+        "python-standards"
+      ],
+      "domains_covered": [
+        "provider-failures",
+        "ui-safe-messages",
+        "cli-boundaries"
+      ]
+    },
+    {
+      "name": "data-validation",
+      "path": ".codex/skills/data-validation/",
+      "layer": 2,
+      "depends_on": [
+        "project-architecture",
+        "python-standards"
+      ],
+      "domains_covered": [
+        "config",
+        "provider-response",
+        "view-model-shape"
+      ]
+    },
+    {
+      "name": "testing-strategy",
+      "path": ".codex/skills/testing-strategy/",
+      "layer": 5,
+      "depends_on": [
+        "project-architecture",
+        "python-standards",
+        "error-handling",
+        "data-validation"
+      ],
+      "domains_covered": [
+        "unit",
+        "integration",
+        "contract",
+        "health-gates"
+      ]
+    },
+    {
+      "name": "performance-optimization",
+      "path": ".codex/skills/performance-optimization/",
+      "layer": 5,
+      "depends_on": [
+        "project-architecture",
+        "python-standards",
+        "testing-strategy"
+      ],
+      "domains_covered": [
+        "polling",
+        "local-scan",
+        "cache",
+        "desktop-cost"
+      ]
+    },
+    {
+      "name": "dependency-management",
+      "path": ".codex/skills/dependency-management/",
+      "layer": 2,
+      "depends_on": [
+        "project-architecture"
+      ],
+      "domains_covered": [
+        "python-dev-deps",
+        "npm-tooling",
+        "archived-code"
+      ]
+    },
+    {
+      "name": "documentation-standards",
+      "path": ".codex/skills/documentation-standards/",
+      "layer": 1,
+      "depends_on": [
+        "project-architecture"
+      ],
+      "domains_covered": [
+        "plans",
+        "todo",
+        "readme",
+        "boundary-docs"
+      ]
+    },
+    {
+      "name": "git-workflow",
+      "path": ".codex/skills/git-workflow/",
+      "layer": 1,
+      "depends_on": [
+        "project-architecture",
+        "documentation-standards"
+      ],
+      "domains_covered": [
+        "branching",
+        "commits",
+        "verification"
+      ]
+    },
+    {
+      "name": "desktop-integration-patterns",
+      "path": ".codex/skills/desktop-integration-patterns/",
+      "layer": 4,
+      "depends_on": [
+        "project-architecture",
+        "presentation-contracts",
+        "config-and-runtime-state"
+      ],
+      "domains_covered": [
+        "kde",
+        "gnome",
+        "subprocess-bridge",
+        "theme-native-ui"
+      ]
+    },
+    {
+      "name": "provider-patterns",
+      "path": ".codex/skills/provider-patterns/",
+      "layer": 7,
+      "depends_on": [
+        "python-standards",
+        "security-hardening",
+        "error-handling",
+        "data-validation"
+      ],
+      "domains_covered": [
+        "collectors",
+        "auth",
+        "local-vs-remote",
+        "provider-state"
+      ]
+    },
+    {
+      "name": "identity-state-management",
+      "path": ".codex/skills/identity-state-management/",
+      "layer": 7,
+      "depends_on": [
+        "provider-patterns",
+        "presentation-contracts",
+        "config-and-runtime-state"
+      ],
+      "domains_covered": [
+        "account-switch",
+        "snapshots",
+        "stale-data-guard"
+      ]
+    },
+    {
+      "name": "presentation-contracts",
+      "path": ".codex/skills/presentation-contracts/",
+      "layer": 4,
+      "depends_on": [
+        "project-architecture",
+        "data-validation",
+        "error-handling"
+      ],
+      "domains_covered": [
+        "popup-vm",
+        "config-ui",
+        "sourcePresentation"
+      ]
+    },
+    {
+      "name": "config-and-runtime-state",
+      "path": ".codex/skills/config-and-runtime-state/",
+      "layer": 3,
+      "depends_on": [
+        "data-validation",
+        "project-architecture"
+      ],
+      "domains_covered": [
+        "config.json",
+        "state dir",
+        "runtime cache",
+        "provider defaults"
+      ]
+    },
+    {
+      "name": "observability",
+      "path": ".codex/skills/observability/",
+      "layer": 6,
+      "depends_on": [
+        "error-handling",
+        "performance-optimization",
+        "provider-patterns"
+      ],
+      "domains_covered": [
+        "structured-debugging",
+        "health-gates",
+        "provider diagnostics"
+      ]
+    }
+  ],
+  "total_skills": 16,
+  "total_rules": 80,
+  "total_anti_patterns": 32,
+  "coverage": {
+    "security": true,
+    "performance": true,
+    "privacy": true,
+    "testing": true,
+    "accessibility": false,
+    "error_handling": true,
+    "documentation": true,
+    "observability": true,
+    "desktop_integration": true,
+    "provider_contracts": true
+  }
+}

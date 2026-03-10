@@ -1,5 +1,104 @@
 # Lessons
 
+## 2026-03-09 - OAuth Tabanlı Provider'ı `api` Source ile Etiketleme UI Semantik Hatası Üretir
+
+- Provider gerçek çağrıyı HTTP endpoint’e yapsa bile kimlik doğrulama modeli OAuth ise `source` alanı `api` yerine `oauth` olmalıdır.
+- `source` alanı yalnız transport’u değil kullanıcıya gösterilen çalışma modunu da sürer; yanlış source etiketi popup badge’lerinde “API configured” gibi yanıltıcı sinyal üretir.
+- Descriptor seviyesinde `source_modes` ile runtime `ProviderState.source` birlikte hizalanmazsa source model fallback/availability metinleri drift eder.
+- Bu sınıf düzeltmelerde en kısa regresyon kilidi: provider unit testinde `state.source` + popup/state smoke test seti.
+
+## 2026-03-09 - Gemini Çoklu Quota Buckets UI'da Gürültü Üretiyor
+
+- Provider `extras.buckets` alanını doğrudan listelemek Gemini gibi çoklu model quota döndüren sağlayıcılarda popup okunabilirliğini bozuyor.
+- Tasarım parity’si için model satırları sağlayıcı semantiğine göre filtrelenmeli; Gemini’de `extras.model` veya `primaryModel` önceliklendirilip tek satır gösterilmeli.
+- Model id karşılaştırmalarında `models/<id>` ve çıplak `<id>` format farkı normalize edilmezse yanlış bucket seçilir.
+- Bu tip UI sadeleştirmeleri regresyon testine bağlanmalı; aksi halde yeni provider payload değişimleri model satırı gürültüsünü geri getirir.
+
+## 2026-03-09 - Tray Provider Seçimi Persisted Ayardan Ayrı Runtime Kanal İster
+
+- Panel/tray metriğini yalnız persisted `panel-tool` ayarına bağlamak, popup içi anlık provider seçimini yansıtmaz; runtime seçimin backend çağrısına taşınması gerekir.
+- KDE/GNOME parity için aynı kural izlenmeli: “seçim değişti -> backend `popup-vm <providerId> --force`”.
+- Runtime seçim stale kalabilir; payload’da provider artık yoksa seçim otomatik temizlenmeli, aksi halde panel sürekli fallback davranışı üretir.
+- Popup sekme seçimi ile panel göstergesi farklı kanallardan gidiyorsa kullanıcı bunu “yanlış provider gösteriyor” olarak algılar; bu iki kanal tek resolver’da birleşmelidir.
+
+## 2026-03-09 - Gemini OAuth Şema Drift’i Auth Hatası Gibi Görünebilir
+
+- `~/.gemini/oauth_creds.json` dosyası `client_id/client_secret` içermeyebilir; refresh akışında önce `id_token` (`aud/azp`) fallback’i, sonra Gemini CLI kurulumundaki `oauth2.js` (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`) fallback’i uygulanmalıdır.
+- `id_token` içindeki `aud/azp` alanı güvenli bir `client_id` fallback kaynağıdır; bu yoksa hata metni “auth invalid” yerine kök nedeni net söylemelidir (`Missing OAuth client id`).
+- Google token endpoint 400 yanıtını tek tipe indirgemek yanlıştır; `client_secret is missing` gibi açıklamalar ayrı sınıflanmalıdır.
+- Kullanıcı “auth yaptım” dediğinde sadece `installed/authenticated` bayrağına bakmak yeterli değil; canlı API 401 + refresh sonucu birlikte okunmalı.
+- Refresh başarılı olsa bile `expiry_date` (ms) alanını korumamak CLI format drift’ine yol açabilir; yazımda hem `expiry` hem `expiry_date` tutmak daha dayanıklıdır.
+
+## 2026-03-09 - Enable/Disable Gecikmesi İçin Polling Değil Event-Driven Tetikleyici Gerekir
+
+- Backend doğrulaması temizse (`config-save-json` sonrası `popup-vm --force` anında doğruysa) gecikmenin kaynağı çoğunlukla desktop lifecycle/polling katmanıdır; kök neden burada aranmalı.
+- GNOME extension’da yalnız `refresh-interval` ile yenilemek provider toggle UX’ini bozar; `config.json` file monitor + kısa debounce + `refresh(true)` zinciri gecikmeyi deterministik kaldırır.
+- Lifecycle patch’lerinde watcher/timer eklemek tek başına yeterli değildir; `destroy()` akışına explicit monitor disconnect + timeout cleanup eklenmeden iş tamamlanmış sayılmamalı.
+
+## 2026-03-09 - Source Politikası Varsayılanı UX’i Doğrudan Belirler
+
+- Hybrid provider’larda defaultu `local_cli` yapmak, kullanıcı müdahalesi yokken bile override hissi yaratıyor; güvenilir temel için `auto-first` daha doğru.
+- Aynı politika backend’de uygulanıp settings option sırası güncellenmezse kullanıcı hâlâ eski davranışı görür; config default + KDE/GNOME option sırası birlikte değişmelidir.
+- “Recommended” etiketinin seçenek sırasıyla tutarlı olması gerekir; aksi halde öneri metni ve gerçek seçim ayrışır.
+
+## 2026-03-09 - Disabled Durumu Unavailable ile Karıştırılmamalı
+
+- Provider kapalı (`enabled=false`) olduğunda “Unavailable” etiketi kullanıcıyı yanlış kök nedene götürür; bu durumda etiket açıkça “Disabled” olmalı.
+- `installed=false` tek başına “CLI yok” anlamına gelmez; disabled state ile availability state ayrıştırılmadan sunum katmanı yanıltıcı olur.
+- Settings presentation için durum etiketleri operasyonel teşhis metni olduğu için (`Disabled`, `Unavailable`, `Auth required`) semantik olarak ayrık tutulmalı.
+
+## 2026-03-09 - KDE Settings İçin Autosave Native Apply’ı Bozar
+
+- KDE plasmoid config akışında `cfg_*` alanlarını değiştirirken backend autosave çağrısı yapmak native Apply semantiğini fiilen bypass eder.
+- Provider görünürlüğü gibi kullanıcı etkisi yüksek ayarlar staged kalmalı; commit anı Apply olmalı.
+- Apply sonrası ana widgetta config değişimini dinleyip force refresh tetiklenmezse kullanıcı “enable/disable geç uygulanıyor” semptomu görür.
+
+## 2026-03-09 - Enable Eylemi UI Affordance ile Tamamlanmalı
+
+- Provider settings’te `enabled=true` sadece persist edilirse kullanıcı geri bildirimini yarım bırakır; aynı etkileşimde detay panelinin auto-expand olması gerekir.
+- KDE ve GNOME yüzeyleri aynı kullanım semantiğini vermeli; birinde expand diğerinde kapalı kalırsa davranış drift’i kullanıcıya “ayar uygulanmadı” olarak yansır.
+- Benzer UI sorunlarında sadece veri/state katmanını değil, eylemin görsel affordance zincirini (toggle -> expanded state) birlikte doğrulamak gerekir.
+
+## 2026-03-09 - Security Guard ve Source Semantiği Birlikte Fixlenmeli
+
+- Audit bulgularında yalnız tek semptoma odaklanmak yetersiz kalıyor; `config-save` boundary, provider source normalization ve popup presentation alanları birlikte ele alınmazsa kullanıcı görünümünde “fixlenmedi” hissi devam ediyor.
+- Secret-field guard’larda regex fallback ancak descriptor bilinmiyorsa çalışmalı; descriptor tarafından açıkça izinli field’lar (`cookieSource`) yanlış pozitiften korunmalı.
+- Provider source tercihi (`web/auto`) normalize katmanında zorla çevriliyorsa UI ve runtime drift üretiyor; explicit user choice korunmalı, fallback yalnız `auto` yoluna bağlı kalmalı.
+- Runtime maliyet fixlerinde cache/buffer eklemek tek başına yeterli değil; davranışın testte kilitlenmesi ve health gate ile doğrulanması şart.
+
+## 2026-03-09 - Sensitive Field Guard’da Pattern Fallback, Descriptor Bilgisini Ezmemeli
+
+- `config-save-json` boundary’sinde secret alan engeli yalnız regex tabanlı olursa `cookieSource` gibi bilinen non-secret field’lar yanlış pozitif üretip ayar kaydını bloke edebilir.
+- Doğru sıra: descriptor varsa önce explicit secret-field listesi; descriptor tarafından tanınan diğer alanları güvenli kabul et; regex fallback sadece descriptor bilinmiyorsa çalışmalı.
+- Provider source semantiğinde explicit kullanıcı tercihini (`source=web`) normalize katmanında implicit `auto`ya çevirmek, UI niyeti ile runtime davranışını ayrıştırır; böyle coercion varsa descriptor/UI seçenekleriyle birebir hizalanmalıdır.
+- Bu sınıf hatalarda en hızlı smoke-check: CLI ile minimal `config-save-json` payload’ı (`opencode + cookieSource`) çalıştırıp boundary davranışını doğrudan doğrulamak.
+
+## 2026-03-09 - GUI PATH Drift ve UI Save Döngüsü Hataları Birlikte Düşünülmeli
+
+- Desktop entegrasyonlarında CLI kurulu olsa bile GUI process PATH’i farklı olabildiği için sadece `shutil.which(...)` yeterli değil; sistem dizinleri + güvenli login-shell fallback kombinasyonu gerekli.
+- Config UI boundary’sinde save yanıtına secret field geri basmak, bir sonraki save çağrısında boundary validator ile çarpışıp sessiz “ayar uygulanmıyor” semptomu üretebilir; UI’ye dönen config her zaman sanitize olmalı.
+- “Provider açtım ama ana ekrana gelmedi” türü semptomlarda yalnız render tarafına bakmak yerine config-save pipeline ve follow-up state refresh zinciri birlikte doğrulanmalı.
+
+## 2026-03-09 - Source Capability Doğrulamasında `source_modes` Tek Başına Yeterli Değil
+
+- `providerCapabilities` alanını yalnız `source_modes` üzerinden türetmek `source_modes=('auto',)` descriptor'larda yanlış negatif üretiyor; capability türetimi dashboard source mapping ve policy sinyallerini de içermeli.
+- `remote` gibi legacy source tokenları kod tabanında aile üyesi olarak dağınık taşımak yerine tek canonical dönüşüm kuralıyla (`remote -> web`) normalize edilmelidir.
+- Dış dokümantasyonla drift riski olan providerlarda (örn. Ollama) scope netliği kod + test + doküman üçlüsünde birlikte kilitlenmelidir; sadece kod değişikliği yeterli değildir.
+
+## 2026-03-09 - Bootstrap Çıktısında Araç Varsayımı Yapma
+
+- Kullanıcı hangi ajanı kullandığını açıkça söylemeden bootstrap çıktısını `.claude` merkezli varsaymamak gerekir; önce aktif ajan/skill dizini bağlamı doğrulanmalı.
+- Skill bootstrap çıktısı araç-özel olmalı: Codex için proje içi öncelikli hedef `.codex/skills` ve ilgili `AGENTS.md` kurallarıdır.
+- Prompt veya skill referansından gelen örnek path'leri proje gerçeği sanmak risklidir; repo bağlamındaki gerçek workflow ile hizalanmadan dosya yapısı önerilmemeli.
+- Kullanıcı araç tercihini düzelttiğinde yalnız cevap dili değil, üretilen dizin yapısı, manifest ve handoff metni de aynı anda güncellenmelidir.
+
+## 2026-03-09 - Bootstrap'ta Skill Suite AGENTS İçine Bağlanmalı
+
+- Proje içine skill üretmek tek başına yeterli değildir; `AGENTS.md` bu skill’leri isimleriyle ve tetiklenme alanlarıyla bağlamalıdır.
+- Yerel `.codex/skills/*` üretildiyse ajan talimatı, hangi işte hangi local skill’in kullanılacağını açıkça söylemelidir; aksi halde suite pasif kalır.
+- Scope kilidi ile skill haritası aynı belgede birlikte yer almalı: önce repo dışına taşmama kuralı, hemen ardından proje-özel skill aktivasyon listesi verilmelidir.
+- Bootstrap teslimi ancak üçlü birlikte tamam sayılır: local skills, manifest, ve `AGENTS.md` içi activation wiring.
+
 ## 2026-03-08 - CI Fail Kök Nedenini Logdan Ayır
 
 - Review yorumları kapanmış olsa bile CI kırığı bağımsız olabilir; önce en güncel failing run logu okunmalı, varsayım yapılmamalı.

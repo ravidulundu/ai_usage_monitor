@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import sqlite3
 import tempfile
@@ -7,11 +9,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from core.ai_usage_monitor.runtime_cache import read_ttl_cache, write_ttl_cache
+
+
+_COOKIE_CACHE_FILE = "browser_cookie_cache.json"
+_COOKIE_CACHE_TTL_SECONDS = 60
+_COOKIE_MISS_SENTINEL = {"miss": True}
+_MEM_COOKIE_CACHE: dict[tuple[str, str], "BrowserCookieResult"] = {}
+
 
 @dataclass(frozen=True)
 class BrowserCookieResult:
     header: str
     source: str
+
+
+@dataclass(frozen=True)
+class CookieBackend:
+    table: str
+    host_column: str
+    drop_empty_values: bool = False
 
 
 def _copy_db(path: Path) -> Path | None:
@@ -76,8 +93,58 @@ def _chromium_paths() -> list[tuple[str, Path]]:
     return paths
 
 
-def _query_firefox(
-    db_path: Path, domains: list[str], cookie_names: set[str] | None
+def _fingerprint_paths(paths: Iterable[tuple[str, Path]]) -> str:
+    items: list[dict[str, str | int]] = []
+    for source, path in paths:
+        try:
+            stat_result = path.stat()
+            items.append(
+                {
+                    "source": source,
+                    "path": str(path),
+                    "mtimeNs": stat_result.st_mtime_ns,
+                    "size": stat_result.st_size,
+                }
+            )
+        except OSError:
+            items.append(
+                {"source": source, "path": str(path), "mtimeNs": -1, "size": -1}
+            )
+    encoded = json.dumps(items, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _cookie_cache_key(
+    domains: list[str],
+    cookie_names: set[str] | None,
+    firefox_paths: list[tuple[str, Path]],
+    chromium_paths: list[tuple[str, Path]],
+) -> tuple[str, str]:
+    key_payload = {
+        "domains": sorted(domains),
+        "cookieNames": sorted(cookie_names) if cookie_names else [],
+    }
+    key = hashlib.sha256(
+        json.dumps(key_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "firefox": _fingerprint_paths(firefox_paths),
+                "chromium": _fingerprint_paths(chromium_paths),
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    return key, fingerprint
+
+
+def _query_cookie_backend(
+    *,
+    db_path: Path,
+    backend: CookieBackend,
+    domains: list[str],
+    cookie_names: set[str] | None,
 ) -> str | None:
     copied = _copy_db(db_path)
     if not copied:
@@ -91,21 +158,21 @@ def _query_firefox(
                 if cookie_names:
                     placeholders = ",".join("?" for _ in cookie_names)
                     query = (
-                        "SELECT name, value FROM moz_cookies "
-                        f"WHERE host LIKE ? AND name IN ({placeholders})"
+                        f"SELECT name, value FROM {backend.table} "
+                        f"WHERE {backend.host_column} LIKE ? AND name IN ({placeholders})"
                     )
                     params = [like, *sorted(cookie_names)]
                 else:
-                    query = "SELECT name, value FROM moz_cookies WHERE host LIKE ?"
-                    params = [like]
-                fetched = conn.execute(query, params).fetchall()
-                for name, value in fetched:
-                    rows.append(
-                        (
-                            str(name),
-                            str(value) if value is not None else None,
-                        )
+                    query = (
+                        f"SELECT name, value FROM {backend.table} "
+                        f"WHERE {backend.host_column} LIKE ?"
                     )
+                    params = [like]
+                for name, value in conn.execute(query, params).fetchall():
+                    value_text = str(value) if value is not None else None
+                    if backend.drop_empty_values and not value_text:
+                        continue
+                    rows.append((str(name), value_text))
             return _cookie_header_from_rows(rows)
         finally:
             conn.close()
@@ -113,42 +180,32 @@ def _query_firefox(
         return None
     finally:
         shutil.rmtree(copied.parent, ignore_errors=True)
+
+
+def _query_firefox(
+    db_path: Path, domains: list[str], cookie_names: set[str] | None
+) -> str | None:
+    return _query_cookie_backend(
+        db_path=db_path,
+        backend=CookieBackend(table="moz_cookies", host_column="host"),
+        domains=domains,
+        cookie_names=cookie_names,
+    )
 
 
 def _query_chromium(
     db_path: Path, domains: list[str], cookie_names: set[str] | None
 ) -> str | None:
-    copied = _copy_db(db_path)
-    if not copied:
-        return None
-    try:
-        conn = sqlite3.connect(f"file:{copied}?mode=ro", uri=True)
-        try:
-            rows: list[tuple[str, str | None]] = []
-            for domain in domains:
-                like = "%" + domain.lstrip(".")
-                if cookie_names:
-                    placeholders = ",".join("?" for _ in cookie_names)
-                    query = (
-                        "SELECT name, value FROM cookies "
-                        f"WHERE host_key LIKE ? AND name IN ({placeholders})"
-                    )
-                    params = [like, *sorted(cookie_names)]
-                else:
-                    query = "SELECT name, value FROM cookies WHERE host_key LIKE ?"
-                    params = [like]
-                fetched = conn.execute(query, params).fetchall()
-                for name, value in fetched:
-                    value_text = str(value) if value is not None else None
-                    if value_text:
-                        rows.append((str(name), value_text))
-            return _cookie_header_from_rows(rows)
-        finally:
-            conn.close()
-    except Exception:
-        return None
-    finally:
-        shutil.rmtree(copied.parent, ignore_errors=True)
+    return _query_cookie_backend(
+        db_path=db_path,
+        backend=CookieBackend(
+            table="cookies",
+            host_column="host_key",
+            drop_empty_values=True,
+        ),
+        domains=domains,
+        cookie_names=cookie_names,
+    )
 
 
 def import_cookie_header(
@@ -159,15 +216,41 @@ def import_cookie_header(
 ) -> BrowserCookieResult | None:
     firefox_paths = firefox_paths if firefox_paths is not None else _firefox_paths()
     chromium_paths = chromium_paths if chromium_paths is not None else _chromium_paths()
+    cache_key, fingerprint = _cookie_cache_key(
+        domains, cookie_names, firefox_paths, chromium_paths
+    )
+    mem_key = (cache_key, fingerprint)
+    mem_cached = _MEM_COOKIE_CACHE.get(mem_key)
+    if mem_cached is not None:
+        return mem_cached
+    cached = read_ttl_cache(
+        _COOKIE_CACHE_FILE,
+        cache_key,
+        _COOKIE_CACHE_TTL_SECONDS,
+        fingerprint=fingerprint,
+    )
+    if isinstance(cached, dict):
+        if cached.get("miss") is True:
+            return None
 
     for source, path in chromium_paths:
         header = _query_chromium(path, domains, cookie_names)
         if header:
-            return BrowserCookieResult(header=header, source=source)
+            result = BrowserCookieResult(header=header, source=source)
+            _MEM_COOKIE_CACHE[mem_key] = result
+            return result
 
     for source, path in firefox_paths:
         header = _query_firefox(path, domains, cookie_names)
         if header:
-            return BrowserCookieResult(header=header, source=source)
+            result = BrowserCookieResult(header=header, source=source)
+            _MEM_COOKIE_CACHE[mem_key] = result
+            return result
 
+    write_ttl_cache(
+        _COOKIE_CACHE_FILE,
+        cache_key,
+        _COOKIE_MISS_SENTINEL,
+        fingerprint=fingerprint,
+    )
     return None

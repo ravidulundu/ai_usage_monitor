@@ -4,6 +4,7 @@ import unittest
 
 from core.ai_usage_monitor.collector_helpers import (
     changed_provider_ids,
+    collect_provider,
     refresh_changed_provider_records,
 )
 from core.ai_usage_monitor.models import MetricWindow, ProviderState
@@ -11,6 +12,52 @@ from core.ai_usage_monitor.providers.base import ProviderBranding, ProviderDescr
 
 
 class CollectorCacheInvalidationTests(unittest.TestCase):
+    def test_collect_provider_tries_explicit_attempts_then_attaches_metadata(self):
+        attempted_sources: list[str] = []
+
+        def collector(settings: dict) -> tuple[dict, ProviderState]:
+            source = str(settings.get("source") or "")
+            attempted_sources.append(source)
+            if source == "cli":
+                return {"attempted": source}, ProviderState(
+                    id="kilo",
+                    display_name="KILO",
+                    installed=False,
+                    source="cli",
+                )
+            return {"attempted": source}, ProviderState(
+                id="kilo",
+                display_name="KILO",
+                installed=True,
+                authenticated=True,
+                source="api",
+            )
+
+        descriptor = ProviderDescriptor(
+            id="kilo",
+            display_name="KILO",
+            source_modes=("auto", "api", "cli"),
+            preferred_source_policy="local_first",
+            branding=ProviderBranding(icon_key="kilo"),
+        )
+
+        legacy, state, configured_source, enabled = collect_provider(
+            "kilo",
+            collector,
+            {"id": "kilo", "enabled": True, "source": "local_cli"},
+            descriptor,
+        )
+
+        self.assertEqual(attempted_sources[:2], ["cli", "api"])
+        self.assertEqual(legacy["attempted"], "api")
+        self.assertTrue(enabled)
+        self.assertEqual(configured_source, "local_cli")
+        self.assertEqual(state.metadata["configuredSource"], "local_cli")
+        self.assertEqual(
+            state.metadata["sourceResolutionPlan"]["preferredSource"], "local_cli"
+        )
+        self.assertEqual(state.source_model["resolvedSource"], "api")
+
     def _record(
         self,
         *,

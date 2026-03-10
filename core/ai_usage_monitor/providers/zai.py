@@ -18,13 +18,14 @@ from core.ai_usage_monitor.shared.http_failures import (
     read_http_error_body,
 )
 from core.ai_usage_monitor.shared.time_utils import unix_to_iso
+from core.ai_usage_monitor.shared.url_safety import env_flag_enabled, resolve_safe_url
 
 
 DESCRIPTOR = ProviderDescriptor(
     id="zai",
     display_name="z.ai",
     short_name="z.ai",
-    default_enabled=True,
+    default_enabled=False,
     source_modes=("api",),
     config_fields=(
         ProviderConfigField("apiKey", "API Key", secret=True),
@@ -52,12 +53,17 @@ def _api_key(settings: dict[str, Any] | None) -> str | None:
 
 
 def _api_url(settings: dict[str, Any] | None) -> str:
+    default_url = "https://api.z.ai/api/monitor/usage/quota/limit"
     api_url = (settings or {}).get("apiUrl")
     if isinstance(api_url, str) and api_url.strip():
-        return api_url.strip()
-    return (
-        os.environ.get("Z_AI_QUOTA_URL")
-        or "https://api.z.ai/api/monitor/usage/quota/limit"
+        candidate = api_url.strip()
+    else:
+        candidate = os.environ.get("Z_AI_QUOTA_URL") or default_url
+    return resolve_safe_url(
+        candidate,
+        default_url=default_url,
+        allowed_hosts=("z.ai",),
+        allow_unsafe=env_flag_enabled(os.environ.get("Z_AI_ALLOW_UNSAFE_API_URL")),
     )
 
 

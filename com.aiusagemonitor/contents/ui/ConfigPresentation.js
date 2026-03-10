@@ -16,11 +16,22 @@ function settingsPresentationFromLive(liveState) {
 
 function sourceModeOptions(descriptor) {
     var modes = (descriptor && descriptor.sourceModes) ? descriptor.sourceModes.slice(0) : []
+    var ordered = []
+    for (var i = 0; i < modes.length; i++) {
+        var mode = String(modes[i] || "")
+        if (mode !== "" && ordered.indexOf(mode) === -1)
+            ordered.push(mode)
+    }
     var supportsLocal = modes.indexOf("cli") !== -1 || modes.indexOf("local") !== -1 || modes.indexOf("oauth") !== -1
     var supportsRemote = modes.indexOf("api") !== -1 || modes.indexOf("web") !== -1 || modes.indexOf("remote") !== -1
-    if (supportsLocal && supportsRemote && modes.indexOf("local_cli") === -1)
-        modes.unshift("local_cli")
-    return modes
+    if (supportsLocal && supportsRemote && ordered.indexOf("local_cli") === -1)
+        ordered.push("local_cli")
+    var autoIndex = ordered.indexOf("auto")
+    if (autoIndex > 0) {
+        ordered.splice(autoIndex, 1)
+        ordered.unshift("auto")
+    }
+    return ordered
 }
 
 function sourceOptionItems(descriptor) {
@@ -28,9 +39,11 @@ function sourceOptionItems(descriptor) {
     var items = []
     for (var i = 0; i < modes.length; i++) {
         var mode = String(modes[i] || "")
-        var label = mode === "local_cli"
+        var label = mode === "auto"
+            ? "Auto (recommended)"
+            : (mode === "local_cli"
             ? "Local-first (CLI→API)"
-            : String(mode).toUpperCase()
+            : String(mode).toUpperCase())
         items.push({ "value": mode, "label": label })
     }
     return items
@@ -38,6 +51,8 @@ function sourceOptionItems(descriptor) {
 
 function defaultPreferredSource(descriptor) {
     var options = sourceModeOptions(descriptor)
+    if (options.indexOf("auto") !== -1)
+        return "auto"
     return options.length > 0 ? options[0] : "auto"
 }
 
@@ -68,12 +83,6 @@ function descriptorCapabilities(descriptor) {
         supportsApi: supportsApi,
         supportsWeb: supportsWeb
     }
-}
-
-function humanizeReason(value) {
-    if (!value)
-        return ""
-    return String(value).replace(/_/g, " ")
 }
 
 function providerRowSubtitle(descriptor, providerState, liveState) {

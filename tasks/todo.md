@@ -1,5 +1,569 @@
 # TODO
 
+## 2026-03-09 - Architecture and Contract Audit
+
+- [x] `project-architecture`, `presentation-contracts`, `identity-state-management` skill kurallarına göre audit kapsamını sabitle
+- [x] Canonical popup/identity contract üretimini core katmanda incele
+- [x] KDE ve GNOME renderer tüketimini canonical contract ile karşılaştır
+- [x] Identity snapshot/apply/invalidation akışında stale veya drift risklerini doğrula
+- [x] Bulguları severity + dosya:line + risk + kısa düzeltme ile raporla
+- [x] Review bölümüne incelenen kanıt yollarını ve kullanılan komutları yaz
+
+### Review
+
+- İncelenen ana kanıt yolları:
+  - `core/ai_usage_monitor/presentation/*.py`
+  - `core/ai_usage_monitor/identity_*.py`
+  - `core/ai_usage_monitor/collector.py`
+  - `core/ai_usage_monitor/collector_helpers.py`
+  - `core/ai_usage_monitor/providers/codex.py`
+  - `com.aiusagemonitor/contents/ui/*.qml`
+  - `com.aiusagemonitor/contents/ui/*.js`
+  - `gnome-extension/aiusagemonitor@aimonitor/*.js`
+  - `tools/project_health_contracts.py`
+  - `tests/test_popup_vm.py`
+  - `tests/test_identity_multi_account.py`
+  - `tests/test_settings_presentation_matrix.py`
+- Kullanılan tarama komutları:
+  - `rg -n "popup_vm|sourcePresentation|settingsPresentation|identity|fingerprint|switchingState|resolvedSource|preferredSource|unavailableReason" core/ai_usage_monitor com.aiusagemonitor/contents gnome-extension/aiusagemonitor@aimonitor tests`
+  - `rg -n "Source switched|Refreshing usage|statusTags|reasonText|identityFingerprint|stateIdentityKey|sourcePresentation" com.aiusagemonitor/contents/ui gnome-extension/aiusagemonitor@aimonitor`
+  - `rg -n "accountStateKey|providerStateKey|stateIdentityKey|activeIdentity|activeIdentityFingerprint" core/ai_usage_monitor com.aiusagemonitor/contents/ui gnome-extension/aiusagemonitor@aimonitor tests`
+  - `rg -n "settingsPresentation|sourceReasonLabel|sourceStatusLabel|availabilityLabel|strategyLabel" core/ai_usage_monitor tests`
+  - `rg --files com.aiusagemonitor/contents gnome-extension/aiusagemonitor@aimonitor | rg "(qml|js)$"`
+
+## 2026-03-09 - Security/Data Validation/Dependency Audit
+
+- [x] `project-architecture`, `security-hardening`, `data-validation`, `dependency-management` ve `documentation-standards` skill kurallarını oku
+- [x] `core/ai_usage_monitor/` ve ilgili toolchain dosyalarında security-hardening odaklı tarama yap
+- [x] `config`, parser ve provider boundary'lerinde data-validation odaklı tarama yap
+- [x] `requirements-dev.txt`, `package.json`, `.pre-commit-config.yaml` ve script çağrılarında dependency-management odaklı tarama yap
+- [x] Kanıtlı bulguları severity + dosya:line + risk + remediation ile raporla
+- [x] Review bölümüne kullanılan doğrulama komutlarını ve audit kapsamını yaz
+
+### Review
+
+- Audit kapsamı `security-hardening`, `data-validation`, `dependency-management` ve bunları bağlayan config/provider/toolchain sınırlarıyla sınırlı tutuldu.
+- Kanıt toplamak için kullanılan ana komutlar:
+  - `rg -n "shell=True|subprocess\\.|json\\.loads|token|cookie|secret|Authorization|api[_-]?key" core tools com.aiusagemonitor gnome-extension tests`
+  - `nl -ba core/ai_usage_monitor/{browser_cookies.py,config.py,cli.py,runtime_cache.py,shared/oauth.py,providers/minimax.py,providers/openrouter.py}`
+  - `nl -ba com.aiusagemonitor/contents/ui/{configGeneral.qml,ConfigBackend.js}`
+  - `nl -ba gnome-extension/aiusagemonitor@aimonitor/{prefs.js,prefsBackend.js}`
+  - `python - <<'PY' ... normalize_config(...) ... PY` ile unknown field preservation ve non-object normalize davranışı doğrulandı
+- Çalıştırılmış davranış kanıtı:
+  - `normalize_config({"providers":[{"id":"copilot","enabled":true,"source":"api","unexpected":{"nested":1}}]})` sonucu `unexpected={'nested': 1}` değerini koruyor.
+  - `normalize_config([])` sonucu default config'e (`refreshInterval=60`) düşüyor; bu `config-save-json` boundary'sinde non-object payload'un sessiz default reset'e dönüşebildiğini doğruluyor.
+
+## 2026-03-09 - Skill-Driven Project Audit
+
+- [x] `AGENTS.md` içindeki yerel skill aktivasyon haritasına göre audit kapsamını kilitle
+- [x] Mimari/contract/identity alanlarını `project-architecture`, `presentation-contracts`, `identity-state-management` perspektifiyle tara
+- [x] Güvenlik/doğrulama alanlarını `security-hardening`, `data-validation`, `dependency-management` perspektifiyle tara
+- [x] Test/perf/observability alanlarını `testing-strategy`, `performance-optimization`, `observability` perspektifiyle tara
+- [x] Bulguları risk seviyesi + dosya referansı + önerilen aksiyon ile raporla
+- [x] Review bölümüne doğrulama komutları ve audit özetini yaz
+
+### Review
+
+- Audit üç paralel alt-ajan (mimari/contract, security/validation, test/perf/observability) + yerel kanıt okuması ile birleştirildi.
+- Ana kanıt dosyaları:
+  - `core/ai_usage_monitor/runtime_cache.py`
+  - `core/ai_usage_monitor/browser_cookies.py`
+  - `core/ai_usage_monitor/config.py`
+  - `core/ai_usage_monitor/cli.py`
+  - `core/ai_usage_monitor/providers/codex.py`
+  - `core/ai_usage_monitor/provider_freshness.py`
+  - `core/ai_usage_monitor/identity_snapshot.py`
+  - `core/ai_usage_monitor/status.py`
+  - `com.aiusagemonitor/contents/ui/main.qml`
+  - `gnome-extension/aiusagemonitor@aimonitor/indicatorLifecycleMixin.js`
+- Kullanılan ana doğrulama/tarama komutları:
+  - `rg --files ... | xargs wc -l | sort -nr | head -n 25`
+  - `python AST taraması` ile 40+ satır fonksiyon envanteri
+  - `nl -ba ...` ile dosya:line doğrulama
+  - alt-ajan tarafından çalıştırılan hedefli suite: `./.venv/bin/python -m pytest -q tests/test_local_usage.py tests/test_browser_cookies.py tests/test_status.py tests/test_collector.py tests/test_collector_cache_invalidation.py tests/test_project_health_contracts.py` (`48 passed`)
+
+## 2026-03-09 - Project Bootstrapper Brownfield Analysis
+
+- [x] Bootstrap giriş dokümanını ve skill referanslarını oku
+- [x] README, boundary dokümanı ve giriş noktalarından brownfield mimariyi doğrula
+- [x] Ana bounded context'leri, giriş noktalarını ve kritik veri akışlarını çıkar
+- [x] Skill bootstrap için önemli brownfield risklerini netleştir
+- [x] Kısa ve somut mimari özetini kullanıcıya sun
+
+### Review
+
+- Repo üç ana katmana ayrılıyor: shared Python core, KDE plasmoid, GNOME extension.
+- Gerçek giriş yüzeyleri `core/ai_usage_monitor/cli.py`, KDE wrapper `com.aiusagemonitor/contents/scripts/fetch_all_usage.py`, GNOME subprocess çağrıları ve opsiyonel `bin/ai-usage-monitor-state`.
+- Kritik runtime zinciri: config -> registry/source strategy -> provider collectors -> identity store invalidation/refetch -> normalized `AppState` -> popup/settings VM -> desktop render.
+- Bootstrap için en önemli brownfield riskleri: UI'ların shared JSON contract'a sıkı bağlı olması, provider/source/identity semantiğinin dağınık ama hassas olması, ve health gate'lerin mimari kararları fiilen kilitlemesi.
+- Etkin stack doğrulaması: Python 3.11 baseline, KDE Plasma/QML 6, GNOME Shell JS/GJS, pytest+mypy+Ruff+ESLint+pre-commit kalite kapıları.
+- Resmi registry üzerinden doğrulanan güncel araç sürümleri: `pytest 9.0.2`, `mypy 1.19.1`, `ruff 0.15.5`, `eslint 10.0.3`.
+
+## 2026-03-09 - Project Bootstrapper Generation
+
+- [x] Codex merkezli proje içi skill hedefini `.codex/skills/` olarak sabitle
+- [x] Onaylanan skill map için proje-özgü skill suite üret
+- [x] `_bootstrap-manifest.json` oluştur
+- [x] `AGENTS.md` içine proje-scope kilidi ekle
+- [x] Bootstrap validator ile sonucu doğrula
+
+### Review
+
+- Skill suite proje içine `.codex/skills/` altında üretildi; `.claude/` varsayımı kaldırıldı.
+- Üretilen 16 skill:
+  - `project-architecture`
+  - `python-standards`
+  - `security-hardening`
+  - `error-handling`
+  - `data-validation`
+  - `testing-strategy`
+  - `performance-optimization`
+  - `dependency-management`
+  - `documentation-standards`
+  - `git-workflow`
+  - `desktop-integration-patterns`
+  - `provider-patterns`
+  - `identity-state-management`
+  - `presentation-contracts`
+  - `config-and-runtime-state`
+  - `observability`
+- Manifest [._bootstrap-manifest.json](/home/osmandulundu/projects/personal/ai_usage_monitor/.codex/skills/_bootstrap-manifest.json) altında oluşturuldu.
+- [AGENTS.md](/home/osmandulundu/projects/personal/ai_usage_monitor/AGENTS.md) proje-scope kilidi ve Codex-merkezli bootstrap yönlendirmesiyle güncellendi.
+- [AGENTS.md](/home/osmandulundu/projects/personal/ai_usage_monitor/AGENTS.md) ayrıca 16 yerel skill için açık aktivasyon haritası ve hangi işte hangi skill zincirinin kullanılacağını içeriyor.
+- Doğrulama:
+  - `python /home/osmandulundu/.codex/skills/project-bootstrapper/scripts/validate_bootstrap.py .codex/skills` PASS (`16 skills`, `80 rules`, `240 code blocks`, `0 errors`, `0 warnings`)
+
+## 2026-03-09 - CLI Dispatch Decomposition Phase 1
+
+- [x] `main(...)` içindeki mode dispatch zincirini handler map'e indir
+- [x] `config-ui` / `popup-vm` / config save path'lerini küçük handler'lara ayır
+- [x] Mevcut CLI testleriyle davranışı koru
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [cli.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/cli.py) içinde `main(...)` artık yalnız parse + dispatch yapıyor.
+- Yeni sınırlar:
+  - `parse_mode(...)`
+  - `_handle_legacy(...)`
+  - `_handle_state(...)`
+  - `_handle_popup_vm(...)`
+  - `_handle_config_*` handler'ları
+  - `COMMAND_HANDLERS`
+- `test_cli_config.py` üzerinden mevcut CLI davranışı korundu.
+
+## 2026-03-09 - Maintainability Refactor Phase 2
+
+- [x] `providers/gemini.py` içindeki orchestration / retry / mapping akışını küçük helper sınırlarına ayır
+- [x] `providers/opencode.py` içindeki source resolution / web fetch / fallback akışını helper sınırlarına ayır
+- [x] `config.py` içindeki schema/defaults / normalize / persistence sınırlarını netleştir
+- [x] `browser_cookies.py` içinde browser-query tekrarını backend tanımıyla sadeleştir
+- [x] `identity_apply.py` içindeki transition hesaplama / apply / persist akışını ayrıştır
+- [x] `providers/kilo.py` ve `providers/minimax.py` için en yüksek kaldıraçlı readability refactor'larını uygula
+- [x] Her fazı hedefli pytest + mypy ile kilitle; finalde `make health-ci PYTHON=python` çalıştır
+
+### Review
+
+- Refactor hedefi davranış değiştirmek değil, okuyucu maliyetini düşürmek.
+- Öncelik sırası:
+  - `gemini.py`
+  - `opencode.py`
+  - `config.py`
+  - `browser_cookies.py`
+  - `identity_apply.py`
+  - `kilo.py` / `minimax.py`
+- Uygulanan ana sınırlar:
+  - [gemini.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/providers/gemini.py) içinde credential-load / retry-refresh / success-error builder adımları ayrıldı.
+  - [opencode.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/providers/opencode.py) içinde local fallback, web collect ve error mapping sınırları netleştirildi.
+  - [config.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/config.py) içinde registry/default scalar settings ve normalize akışı küçük helper bloklara ayrıldı.
+  - [browser_cookies.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/browser_cookies.py) içinde ortak `CookieBackend` tabanlı query çekirdeği çıkarıldı.
+  - [identity_apply.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/identity_apply.py) içinde transition hesaplama, provider apply ve persist adımları ayrıldı.
+  - [kilo.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/providers/kilo.py) ve [minimax.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/providers/minimax.py) top-level collect akışları success/error helper sınırlarıyla sadeleştirildi.
+- Yeni/sertleşen regresyon testleri:
+  - [test_gemini_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_gemini_provider.py)
+  - [test_opencode_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_opencode_provider.py)
+  - [test_kilo_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_kilo_provider.py)
+  - [test_minimax_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_minimax_provider.py)
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_gemini_provider.py tests/test_opencode_provider.py tests/test_config.py tests/test_browser_cookies.py tests/test_identity_multi_account.py tests/test_kilo_provider.py tests/test_minimax_provider.py tests/test_claude_provider.py tests/test_vertexai_provider.py tests/test_local_usage.py tests/test_cli_config.py tests/test_collector.py tests/test_collector_cache_invalidation.py tests/test_settings_presentation_matrix.py tests/test_source_strategy.py tests/test_popup_vm.py` PASS (`103 passed, 3 subtests passed`)
+  - `PYTHONPATH=. ./.venv/bin/python -m mypy --config-file mypy.ini core/ai_usage_monitor` PASS
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-09 - Stable Fallback Metrics Visibility Fix
+
+- [x] `fallbackActive` durumunda stabil fallback ile geçici source-switch refresh state'ini ayır
+- [x] Stable fallback senaryosunda session/weekly metric görünürlüğünü testle kilitle
+- [x] Presentation mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [popup_vm_source_presentation.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/presentation/popup_vm_source_presentation.py) artık `source_switched` unavailable reason'ını sadece gerçek source-refresh geçişinde üretir.
+- Stabil fallback (`preferredSource != resolvedSource` ama identity refresh yok) artık metriği saklamıyor; mevcut resolved source metric'leri görünür kalıyor.
+- Yeni regresyon testi [test_popup_vm.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_popup_vm.py) içinde stable fallback senaryosunu kilitliyor.
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_popup_vm.py tests/test_popup_vm_state_matrix.py tests/test_presentation_helper_modules.py` PASS (`29 passed, 8 subtests passed`)
+  - `PYTHONPATH=. ./.venv/bin/python -m mypy --config-file mypy.ini core/ai_usage_monitor/presentation` PASS
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-09 - Claude Provider Decomposition Phase 1
+
+- [x] `collect_claude(...)` içindeki credential fetch / request / success / error akışlarını helper'lara ayır
+- [x] Identity/extras/incident üretimini ortak helper'lara çıkar
+- [x] Missing-credentials ve success davranışını testle kilitle
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [claude.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/providers/claude.py) içinde şu sınırlar ayrıldı:
+  - `_claude_extras(...)`
+  - `_claude_incident()`
+  - `_load_claude_credentials()`
+  - `_fetch_claude_usage(...)`
+  - `_build_claude_legacy(...)`
+  - `_claude_success_state(...)`
+  - `_claude_error_state(...)`
+- Yeni koruma testleri [test_claude_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_claude_provider.py) içinde credentials yok ve başarı durumlarını kilitliyor.
+
+## 2026-03-09 - Vertex AI Provider Decomposition Phase 1
+
+- [x] `collect_vertexai(...)` içindeki success/error/project-missing akışlarını helper'lara ayır
+- [x] Quota filter literal'larını isimlendirilmiş sabitlere çıkar
+- [x] Success ve project-missing davranışlarını testle kilitle
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [vertexai.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/providers/vertexai.py) içinde şu sınırlar ayrıldı:
+  - `USAGE_FILTER` / `LIMIT_FILTER`
+  - `_vertex_extras(...)`
+  - `_vertex_not_installed()`
+  - `_vertex_project_missing(...)`
+  - `_fetch_vertex_quota_percent(...)`
+  - `_vertex_success_state(...)`
+  - `_vertex_error_state(...)`
+- Yeni koruma testleri [test_vertexai_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_vertexai_provider.py) içinde project eksik ve başarı durumlarını kilitliyor.
+
+## 2026-03-09 - Popup VM Presentation Decomposition Phase 1
+
+- [x] `provider_vm(...)` içindeki identity/source/status/link bloklarını helper'lara ayır
+- [x] `metric_vm(...)` içindeki loading/value/unavailable dallarını helper'lara ayır
+- [x] Mevcut popup VM contract testleriyle davranışı koru
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [popup_vm_provider.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/presentation/popup_vm_provider.py) içinde provider payload üretimi şu bloklara ayrıldı:
+  - `_provider_identity_fields(...)`
+  - `_provider_source_fields(...)`
+  - `_provider_status_fields(...)`
+  - `_provider_action_fields(...)`
+- [popup_vm_metrics_core.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/presentation/popup_vm_metrics_core.py) içinde `metric_vm(...)` şu dallara ayrıldı:
+  - `_metric_source_text(...)`
+  - `_metric_loading_vm(...)`
+  - `_metric_value_vm(...)`
+  - `_metric_unavailable_text(...)`
+- Popup VM contract testleriyle payload anahtarları ve semantik korunmuş durumda.
+
+## 2026-03-09 - Local Usage Decomposition Phase 1
+
+- [x] Claude ve Vertex local usage akışını ortak çekirdeğe indir
+- [x] Mevcut cache/fingerprint davranışını koru
+- [x] Yeni test ile Vertex filtre davranışını kilitle
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [local_usage.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/local_usage.py) içinde Claude ve Vertex için ortak message-usage çekirdeği çıkarıldı:
+  - `_claude_usage_roots()`
+  - `_existing_roots(...)`
+  - `_iter_jsonl_objects(...)`
+  - `_message_usage_tokens(...)`
+  - `_build_daily_snapshot(...)`
+  - `_scan_cached_message_usage(...)`
+- Davranış korunarak kopya tarama akışı kaldırıldı; cache/fingerprint mantığı aynı kaldı.
+- Yeni koruma testi [test_local_usage.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_local_usage.py) içinde non-vertex mesajların Vertex toplamına girmediğini kilitliyor.
+
+## 2026-03-09 - Collector Helpers Decomposition Phase 1
+
+- [x] `collect_provider(...)` içindeki attempt/cache/fallback akışını helper'lara ayır
+- [x] Metadata/source-model finalization adımını ayrı helper'a çıkar
+- [x] Yeni unit test ile attempt sırası ve metadata korumasını kilitle
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- [collector_helpers.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/collector_helpers.py) içinde şu sınırlar ayrıldı:
+  - `configured_source_value(...)`
+  - `_attempt_settings(...)`
+  - `_collect_attempt_result(...)`
+  - `_collect_enabled_provider(...)`
+  - `_apply_provider_metadata(...)`
+- Dış sözleşme korunarak `collect_provider(...)` daha kısa ve okunabilir hale geldi.
+- Yeni koruma testi [test_collector_cache_invalidation.py](/home/osmandulundu/projects/personal/ai_usage_monitor/tests/test_collector_cache_invalidation.py) içinde explicit attempt sırası + metadata/source-model devamlılığını kilitliyor.
+
+## 2026-03-09 - Source Model Decomposition Phase 1 Execution
+
+- [x] Source-model contract testlerini sıkılaştır
+- [x] `SourceModelInputs` ve `SourceModelRuntime` yapılarını çıkar
+- [x] Settings presentation üretimini ayrı modüle taşı
+- [x] Payload assembly'yi ayrı modüle taşı
+- [x] Hedefli pytest + mypy + `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- `build_provider_source_model(...)` public yüzeyi korunarak iç akış dört parçaya ayrıldı:
+  - [common.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/sources/common.py)
+  - [model_types.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/sources/model_types.py)
+  - [settings_presentation.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/sources/settings_presentation.py)
+  - [payloads.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/sources/payloads.py)
+- Ana facade dosyası [model.py](/home/osmandulundu/projects/personal/ai_usage_monitor/core/ai_usage_monitor/sources/model.py) 832 satırdan 450 satıra indi.
+- Contract kilidi olarak `tests/test_settings_presentation_matrix.py`, `tests/test_source_strategy.py` ve `tests/test_popup_vm.py` kullanıldı.
+
+## 2026-03-09 - Source Model Decomposition Phase 1 Plan
+
+- [x] İlk uygulanacak refactor hedefini seç (`sources/model.py`)
+- [x] Faz-1 implementasyon planını yaz
+- [x] Test ve doğrulama kapılarını plan içine kilitle
+- [x] Planı `docs/plans/2026-03-09-source-model-decomposition-phase-1.md` altına kaydet
+
+### Review
+
+- İlk uygulanacak adım olarak `sources/model.py` seçildi; çünkü audit içindeki en büyük dosya ve en yüksek bağlaşım burada.
+- Faz-1 bilinçli olarak davranış değiştirmiyor; yalnız iç modülerliği artırıp public `build_provider_source_model(...)` yüzeyini koruyor.
+- Plan test-first ilerliyor: `test_settings_presentation_matrix.py`, `test_source_strategy.py`, `test_popup_vm.py` contract kilidi olarak kullanılacak.
+
+## 2026-03-09 - Abstraction Quality & Duplicate Code Audit
+
+- [ ] Üretim kodu envanterini çıkar ve audit kapsamını netleştir (Python core + renderer giriş katmanı)
+- [ ] SRP ihlali, util/helper çöplüğü, data clump, abstraction level uyuşmazlığı için hotspot analizi yap
+- [ ] Kopya kod ve shared abstraction fırsatlarını dosya/satır bazlı kanıtla
+- [ ] Bulguları sürdürülebilirlik etkisi + önerilen ayrıştırma/ortak abstraction ile raporla
+- [ ] Review notunu `tasks/todo.md` içine ekle
+
+## 2026-03-08 - Maintainability Audit
+
+- [x] Uzun fonksiyonlar, büyük dosyalar ve derin iç içe geçmeleri çıkar
+- [x] Soyutlama kalitesi, bağlaşım/uyum ve tutarlılık bulgularını üretim kodunda topla
+- [x] Bulguları refactor örnekleriyle raporla
+
+### Review
+
+- Audit kapsamı: `core/ai_usage_monitor`, `gnome-extension/aiusagemonitor@aimonitor`, `com.aiusagemonitor/contents/ui` (generated ve `node_modules` hariç).
+- Öncelikli bulgular:
+  - 400+ satır dosyalar: `sources/model.py`, `providers/kilo.py`, `providers/opencode.py`, `providers/minimax.py`, `providers/gemini.py`, `local_usage.py`
+  - 40+ satır fonksiyonlarda orchestration + parse + presentation sorumluluklarının birleşmesi
+  - Derin iç içe geçme: provider fallback/retry blokları ve popup metric üretimi
+  - Boolean flag akışları: `force` / `force_refresh` / `forceRefresh` çağrı zinciri
+  - İsimlendirme ve literal yoğunluğu: `legacy` payload adı, fallback/status reason string kodları, tekrarlayan sabitler
+
+## 2026-03-08 - FinOps Sweep Reduction Round 3
+
+- [x] `collect_all()` içinde güvenli provider freshness katmanını ekle
+- [x] `claude` ve `vertexai` local usage taramalarını fingerprint cache ile azalt
+- [x] Yeni kurulum için pahalı/niş provider default setini daralt
+- [x] Regresyon testleri ve kalite kapılarıyla doğrula
+
+### Review
+
+- Bu tur popup-level cache'in ötesine geçip cache miss / force dışı backend sweep maliyetini azaltacak.
+- Güvenli kapsam:
+  - provider freshness sadece kimliği settings/env ile stabil provider'larda açılacak
+  - browser/session tabanlı provider'lar bu turda freshness cache'e alınmayacak
+- Hedef:
+  - `vertexai`, `copilot`, `openrouter` gibi remote-heavy provider'larda gereksiz tekrar fetch'i azaltmak
+  - `claude` / `vertexai` local usage tam dosya taramasını dosya fingerprint cache ile kırpmak
+  - yeni kurulumda pahalı ve niş provider'ları varsayılan açık başlatmamak
+- Uygulanan değişiklikler:
+  - `provider_freshness.py` eklendi; collector-call seviyesinde kısa TTL cache yalnız `vertexai`, `copilot`, `openrouter` için aktif
+  - `collector_helpers.py` cache miss/hit mantığını collector çağrısına sardı; identity-change refetch yolu cache bypass ediyor
+  - `collector.py` içindeki force-refresh akışı popup-level force ile provider freshness bypass'ını hizalıyor
+  - `models.py` içine `from_dict` roundtrip desteği eklendi
+  - `local_usage.py` içinde `claude` ve `vertexai` için file-fingerprint tabanlı local usage cache eklendi
+  - yeni varsayılan disabled provider'lar:
+    - `amp`, `kilo`, `minimax`, `ollama`, `openrouter`, `vertexai`, `zai`
+- Yeni test korumaları:
+  - `tests/test_models.py` state roundtrip
+  - `tests/test_local_usage.py` claude/vertex cache reuse
+  - `tests/test_config.py` expensive provider default disable
+  - `tests/test_collector.py` provider freshness cache
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_models.py tests/test_local_usage.py tests/test_config.py tests/test_collector.py tests/test_collector_cache_invalidation.py` PASS (`33 passed`)
+  - `PYTHONPATH=. ./.venv/bin/python -m mypy --config-file mypy.ini core/ai_usage_monitor` PASS
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-08 - Polling Cost Optimization Round 2 Design
+
+- [x] KDE + GNOME polling entrypoint'lerini ve refresh tetikleyicilerini analiz et
+- [x] Collector/identity/source-resolution sınırlarını cache uygunluğu açısından çıkar
+- [x] En düşük riskli ikinci tur TTL/cache tasarımını belirle
+- [x] Dosya etki alanı, davranış riskleri ve test stratejisini dokümante et
+
+### Review
+
+- Mevcut maliyet zinciri:
+  - KDE: `main.qml` içindeki periyodik `refreshTimer` + `onExpandedChanged` anlık refresh
+  - GNOME: `indicatorLifecycleMixin._scheduleRefresh()` periyodik refresh + menu open refresh
+  - Her refresh bir `python3 ... fetch_all_usage.py popup-vm` subprocess'i başlatıyor
+  - Backend `collect_all()` her çağrıda tüm aktif provider'ları topluyor; identity switch varsa ek refetch turu yapabiliyor
+- En düşük riskli ikinci tur kararı:
+  - Provider-level cache yerine `popup-vm payload` sınırında kısa TTL cache
+  - Etkileşimli akış (menu open / identity refresh) `--force` ile cache bypass
+  - Background poll (timer) cache kullanabilir
+- Neden bu yaklaşım:
+  - `collector_helpers.collect_provider` + source fallback + identity refetch semantiğine dokunmuyor
+  - Provider descriptor/registry/fetch stratejisi contract'ını bozmuyor
+  - Sadece orchestrasyon katmanında tekrar işi azaltıyor
+
+## 2026-03-08 - Polling Cost Optimization Round 2 Execution
+
+- [x] `popup-vm` payload için kısa TTL cache ekle
+- [x] CLI tarafına `popup-vm --force` parse desteği ekle
+- [x] KDE timer/menu/identity refresh path'lerini force semantiğiyle ayır
+- [x] GNOME timer/menu/identity refresh path'lerini force semantiğiyle ayır
+- [x] Config normalize alanına `pollingCacheSeconds` ekle
+- [x] Regresyon testleri ve lifecycle contract kontrollerini güncelle
+- [x] Doğrulama: hedefli pytest + mypy + `make health-ci PYTHON=python`
+
+### Review
+
+- Uygulanan yaklaşım provider-level cache değil, `collect_popup_vm_payload(...)` seviyesinde TTL cache oldu.
+- Yeni davranış:
+  - background timer poll cache kullanabilir
+  - menu open ve identity refresh yolları `--force` ile cache bypass eder
+- Backend değişiklikleri:
+  - `config.py` içine `pollingCacheSeconds` eklendi (`default=10`, clamp `0..60`)
+  - `collector.py` içinde popup payload cache key: `mode + preferredProviderId + normalized config`
+  - `cli.py` içinde `popup-vm --force` ve `popup-vm <provider> --force` parse desteği eklendi
+- Frontend wiring:
+  - KDE `refresh(false)` timer, `refresh(true)` menu open / identity refresh / initial load
+  - GNOME `_refresh(false)` timer, `_refresh(true)` menu open / identity refresh / initial load
+- Koruma:
+  - lifecycle contract tokenları `--force` wiring için güncellendi
+  - collector/config/cli testleri cache hit, force bypass ve arg parse davranışını kilitliyor
+- Dokümanlar:
+  - `docs/plans/2026-03-08-polling-cost-optimization-round-2-design.md`
+  - `docs/plans/2026-03-08-polling-cost-optimization-round-2.md`
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_collector.py tests/test_config.py tests/test_cli_config.py tests/test_project_health_contracts.py` PASS (`46 passed`)
+  - `PYTHONPATH=. ./.venv/bin/python -m mypy --config-file mypy.ini core/ai_usage_monitor` PASS
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-08 - FinOps Runtime Optimization Round 1
+
+- [x] FinOps tranche planını yaz ve kapsamı kilitle
+- [x] Codex local usage + latest snapshot çift taramasını tek geçişe indir
+- [x] OpenCode auto akışında gereksiz local/web çift scan maliyetini kaldır
+- [x] Status page ve browser cookie import yoluna düşük riskli disk-backed cache ekle
+- [x] Regresyon testlerini ekle ve hedefli kalite kapılarını çalıştır
+
+### Review
+
+- Bu tur agresif polling mimarisini değiştirmedi; runtime davranışı korunarak tekrar iş azaltıldı.
+- Uygulanan optimizasyonlar:
+  - `runtime_cache.py` ile state dir altında TTL tabanlı küçük JSON cache yardımıcısı eklendi
+  - `status.py` artık status endpoint yanıtlarını kısa süreli cache'liyor
+  - `browser_cookies.py` aynı DB fingerprint'i için cookie import sonucunu kısa süreli cache'liyor
+  - `collect_codex()` ikinci `rglob` turunu kaldırıp aynı dosya listesini local usage + latest snapshot yollarında yeniden kullanıyor
+  - `collect_opencode()` auto/web başarı yolunda gereksiz ön local scan yapmıyor; web success/error yolunda local usage en fazla bir kez hesaplanıyor
+- Yeni regresyon korumaları:
+  - `tests/test_status.py`
+  - `tests/test_browser_cookies.py` cache reuse vakası
+  - `tests/test_local_usage.py` supplied files fast-path vakası
+  - `tests/test_codex_normalization.py` supplied files ile reglobbing olmaması
+  - `tests/test_opencode_provider.py` web başarı yolunda tek local usage scan
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_local_usage.py tests/test_codex_normalization.py tests/test_opencode_provider.py tests/test_browser_cookies.py tests/test_status.py` PASS (`24 passed`)
+  - `PYTHONPATH=. ./.venv/bin/python -m mypy --config-file mypy.ini core/ai_usage_monitor` PASS
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-08 - Dormant Provider Archive Plan
+
+- [x] Dormant provider arşivleme kapsamını çıkar
+- [x] `kiro` / `jetbrains` / `warp` / `kimik2` için arşivleme planını yaz
+- [x] Test, docs ve compat risklerini plan içinde ayrı ele al
+- [x] Uygulama planını `docs/plans/2026-03-08-dormant-provider-archive.md` altında kaydet
+
+### Review
+
+- Plan, dormant provider implementation'larını active runtime yüzeyinden çıkarıp
+  `core.ai_usage_monitor.archived_providers` namespace'ine taşıyacak şekilde yazıldı.
+- Güvenli tercih:
+  - runtime registry/fetch yüzeyi temiz kalır
+  - eski importlar için gerekirse shim bırakılır
+  - default CI'da ana ürün davranışı korunur
+- Plan dosyası:
+  - `docs/plans/2026-03-08-dormant-provider-archive.md`
+
+## 2026-03-08 - Dormant Provider Archive Execution
+
+- [x] Archive namespace oluştur (`core.ai_usage_monitor.archived_providers`)
+- [x] `kiro` / `jetbrains` / `warp` / `kimik2` implementasyonlarını archive namespace'ine taşı
+- [x] Eski provider modüllerini compat shim'e çevir
+- [x] Test importlarını archive namespace'e taşı ve boundary test ekle
+- [x] README ve core boundary dokümantasyonunu archived/not-shipped ayrımıyla güncelle
+- [x] Doğrulama: hedefli pytest + `ruff` + `mypy` + `make health-ci PYTHON=python`
+
+### Review
+
+- Yeni aktif olmayan namespace:
+  - `core.ai_usage_monitor.archived_providers`
+- Taşınan implementasyonlar:
+  - `kiro`, `jetbrains`, `warp`, `kimik2`
+- Compat yaklaşımı:
+  - eski `core.ai_usage_monitor.providers.*` modülleri ince shim olarak bırakıldı
+  - böylece dış import riski minimize edilirken shipped runtime yüzeyi temiz kaldı
+- Yeni koruma:
+  - `tests/test_archived_provider_boundaries.py` aktif package/registry/fetch yüzeyine bu provider'ların geri sızmasını kilitliyor
+- Doğrulama:
+  - `pytest -q tests/test_archived_provider_boundaries.py tests/test_kiro_provider.py tests/test_jetbrains_provider.py tests/test_api_providers.py tests/test_cli_detect.py tests/test_config.py tests/test_provider_registry_shape.py` PASS (`19 passed`)
+  - `PYTHONPATH=. ./.venv/bin/python -m mypy --config-file mypy.ini core/ai_usage_monitor` PASS
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-08 - Dead Code Cleanup
+
+- [x] Audit içindeki yüksek güven dead-code bulgularını kaldır
+- [x] Düşük riskli medium import/export temizliklerini uygula
+- [x] Runtime import zincirinden shipped olmayan provider eager-importlarını çıkar
+- [x] Doğrulama: hedefli testler + `make health-ci PYTHON=python`
+
+### Review
+
+- Kaldırılan dead code:
+  - `extension.js` içindeki mixin tarafından gölgelenen iki timeout temizleme metodu
+  - buna bağlı `GLib` importu
+  - `ConfigPresentation.js` ve GNOME prefs presentation tarafındaki kullanılmayan helper/export yüzeyi
+  - `tools/project_health_check.py` içindeki kullanılmayan `CheckResult.ok`
+  - `core.ai_usage_monitor.api.PublicPayload`
+  - `core.ai_usage_monitor.providers.base.ProviderCollector`
+- Runtime import yüzeyi daraltıldı:
+  - `core.ai_usage_monitor.providers.__init__` artık shipped olmayan `kiro` / `jetbrains` / `warp` / `kimik2` collector’larını eager-import etmiyor
+- Doğrulama:
+  - `pytest -q tests/test_project_health_contracts.py tests/test_core_api_boundary.py tests/test_provider_registry_shape.py tests/test_config.py` PASS (`25 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`)
+
+## 2026-03-08 - Dead Code Audit
+
+- [x] Repo kapsamını, entrypoint'leri ve manifestleri doğrula
+- [x] Python modüllerinde unreachable declaration ve dead flow adaylarını çıkar
+- [x] GNOME JS / KDE JS-QML yüzeyinde unused import, unreachable declaration ve dead file adaylarını çıkar
+- [x] Paket seviyesinde phantom dependency adaylarını doğrula
+- [x] Dinamik kullanım / framework hook / public API istisnalarıyla yanlış pozitifleri ele
+- [x] Bulguları risk seviyesine göre triage edip raporla
+
+### Review
+
+- Doğrulanan yüksek güven bulgular:
+  - `extension.js` içinde mixin tarafından gölgelenen iki timeout temizleme metodu
+  - buna bağlı ölü `GLib` importu
+  - `ConfigPresentation.js` içindeki kullanılmayan `humanizeReason`
+  - `tools/project_health_check.py` içindeki kullanılmayan `CheckResult.ok` property
+- Düşük/orta risk bulgular çoğunlukla backward-compat shim veya shipped runtime'a bağlı olmayan legacy provider kodu:
+  - `source_model.py`, `popup_vm_source.py`, `state.py`, `util.py`
+  - runtime registry/fetch stratejilerinden dışlanan `kiro` / `jetbrains` / `warp` / `kimik2`
+- Paket seviyesi phantom dependency doğrulaması:
+  - `eslint` ve `eslint-plugin-jsdoc` aktif kullanılıyor
+  - `requirements-dev.txt` içindeki araçların hepsi quality gate'lerde referanslı
+
 ## 2026-03-08 - PR Review + CI Fix Round
 
 - [x] Copilot review yorumlarına karşılık gelen patchleri doğrula ve uygula
@@ -1297,3 +1861,474 @@
 - `make typecheck`: PASS
 - `make health-ci`: PASS
 - hedefli regression testleri: PASS
+
+## 2026-03-09 - Skill Audit Fix Round (Security + Validation + Runtime Cost)
+
+- [x] Runtime cache ve identity store yazımlarını atomik + dar izinli hale getir
+- [x] Cookie cache'te plaintext header persist riskini kaldır; sadece negative miss cache bırak
+- [x] Config boundary doğrulamasını sıkılaştır (payload tipi, provider/field whitelist, unknown key drop)
+- [x] CLI config akışında secret field argv taşımasını engelle ve UI payload'ını sanitize et
+- [x] KDE stale-state reset davranışını GNOME parity ile hizala ve command quote kırılganlığını düzelt
+- [x] Status payload shape guard'larını ekle (malformed payload crash önleme)
+- [x] Codex/OpenCode local scan pathlerinde gereksiz tekrar taramayı azalt
+- [x] Health tool observability ve contract kapsamını genişlet
+- [x] Regresyon testlerini güncelle/ekle ve CI health gate ile doğrula
+
+### Review
+
+- Uygulanan ana düzeltme alanları:
+  - `core/ai_usage_monitor/runtime_cache.py`
+  - `core/ai_usage_monitor/identity_snapshot.py`
+  - `core/ai_usage_monitor/browser_cookies.py`
+  - `core/ai_usage_monitor/config.py`
+  - `core/ai_usage_monitor/cli.py`
+  - `core/ai_usage_monitor/providers/registry.py`
+  - `core/ai_usage_monitor/providers/codex.py`
+  - `core/ai_usage_monitor/providers/minimax.py`
+  - `core/ai_usage_monitor/local_usage.py`
+  - `core/ai_usage_monitor/provider_freshness.py`
+  - `core/ai_usage_monitor/status.py`
+  - `com.aiusagemonitor/contents/ui/main.qml`
+  - `tools/project_health_check.py`
+  - `tools/project_health_contracts.py`
+- Eklenen/güncellenen test odakları:
+  - `tests/test_runtime_cache.py`
+  - `tests/test_cli_config.py`
+  - `tests/test_config.py`
+  - `tests/test_browser_cookies.py`
+  - `tests/test_status.py`
+  - `tests/test_codex_normalization.py`
+  - `tests/test_collector.py`
+  - `tests/test_project_health_contracts.py`
+  - `tests/test_settings_presentation_matrix.py`
+- Doğrulama çıktıları:
+- `make health-ci PYTHON=python` => `17 passed/warned, 0 failed, 0 warnings`
+- `pytest` toplamı => `178 passed, 23 subtests passed`
+
+## 2026-03-09 - Source Semantics Audit Follow-up (api/web/cli/remote)
+
+- [x] `providerCapabilities` hesaplamasında `source_modes=('auto',)` provider'larda yanlış negatifleri düzelt
+- [x] `remote` değerini legacy alias olarak `web`e canonical normalize et
+- [x] Ollama için web-only semantiğini test ve dokümanla netleştir
+- [x] Hedefli pytest + `make health-ci PYTHON=python` ile doğrula
+- [x] Review ve lessons kayıtlarını güncelle
+
+### Review
+
+- Uygulanan kod değişiklikleri:
+  - `core/ai_usage_monitor/providers/registry.py`
+    - `providerCapabilities` artık yalnız `source_modes` değil; `usageDashboardBySource` sinyalleri + policy fallback ile türetiliyor.
+    - `source_modes=('auto',)` descriptor'larda false-negative capability üretimi kapatıldı.
+  - `core/ai_usage_monitor/sources/common.py`
+  - `core/ai_usage_monitor/sources/strategy.py`
+  - `core/ai_usage_monitor/config.py`
+  - `core/ai_usage_monitor/identity_fingerprint.py`
+  - `core/ai_usage_monitor/presentation/popup_vm_source_presentation.py`
+  - `core/ai_usage_monitor/presentation/popup_vm_source_model.py`
+    - Legacy `remote` inputları canonical olarak `web`e normalize edildi (backward compatible alias).
+- Uygulanan test/doküman değişiklikleri:
+  - `tests/test_provider_registry_shape.py`
+  - `tests/test_descriptor_payload_parse.py`
+  - `tests/test_source_strategy.py`
+  - `tests/test_config.py`
+  - `docs/reference/codexbar/providers.md` (Ollama web-only/cloud kapsamı netleştirildi)
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_provider_registry_shape.py tests/test_descriptor_payload_parse.py tests/test_source_strategy.py tests/test_config.py` PASS (`21 passed, 12 subtests passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `182 passed, 23 subtests passed`)
+
+## 2026-03-09 - Full Skill-Suite Audit
+
+- [x] Tüm proje skill başlıklarını audit kapsamına eşle (`project-architecture` ... `observability`)
+- [x] Mimari/contract/desktop/provider/identity lens’i ile boundary ve drift risklerini tara
+- [x] Security/error/data-validation/config-runtime lens’i ile güvenlik ve doğrulama risklerini tara
+- [x] Testing/performance/dependency/observability lens’i ile kalite kapıları ve maliyet sinyallerini tara
+- [x] Documentation/git-workflow lens’i ile dokümantasyon ve süreç uyumunu tara
+- [x] Tüm bulguları severity + dosya referansı + öneriyle tek raporda birleştir
+- [x] Review bölümüne kullanılan komutları, ajan kapsamlarını ve doğrulama çıktısını yaz
+
+### Review
+
+- Audit kapsamı tüm proje yerel skill zinciriyle yürütüldü:
+  - `project-architecture`, `desktop-integration-patterns`, `presentation-contracts`, `identity-state-management`, `provider-patterns`
+  - `security-hardening`, `data-validation`, `error-handling`, `config-and-runtime-state`, `python-standards`
+  - `performance-optimization`, `observability`, `testing-strategy`, `dependency-management`
+  - `documentation-standards`, `git-workflow`
+- Paralel alt-ajanlar:
+  - `019cd381-05ca-7b42-9c1a-a786cd702a9e` (mimari/desktop/presentation/provider/identity)
+  - `019cd381-0bb9-7150-85de-d357cf4479c7` (security/validation/error/config-runtime/python)
+  - `019cd381-11a3-76e1-a0a2-9b51677d677e` (performance/observability/testing/dependency)
+  - `019cd381-17ca-7da3-8862-6bdc87c89d27` (documentation/git-workflow)
+- Ana doğrulama komutları:
+  - `rg --files .codex/skills`
+  - `nl -ba README.md | sed -n '210,260p'`
+  - `nl -ba core/ai_usage_monitor/config.py | sed -n '220,260p'`
+  - `nl -ba core/ai_usage_monitor/provider_freshness.py | sed -n '1,220p'`
+  - `nl -ba core/ai_usage_monitor/status.py | sed -n '1,220p'`
+  - `nl -ba core/ai_usage_monitor/providers/openrouter.py | sed -n '1,150p'`
+  - `nl -ba core/ai_usage_monitor/providers/zai.py | sed -n '1,140p'`
+  - `nl -ba core/ai_usage_monitor/presentation/popup_vm_source_presentation.py | sed -n '1,280p'`
+  - `rg -n "For Claude|superpowers:executing-plans|tests/core/" docs/plans`
+- Öne çıkan bulgular:
+  - Provider freshness TTL tablosu boş olduğu için cache devre dışı.
+  - Status fetch hata yolunda negatif cache/backoff yok.
+  - OpenRouter/z.ai custom API URL değerleri `https/allowlist` doğrulaması olmadan kullanılıyor.
+  - `opencode` için explicit `web` seçimi normalize aşamasında `auto`ya zorlanıyor.
+  - Popup source presentation `web` kaynağını `activeSourceLabel=API` olarak gösterebiliyor.
+  - README/docs kaynak semantiği ve plan yürütme metinlerinde Codex-merkezli akışa aykırı drift var.
+
+## 2026-03-09 - OpenCode Config Save False-Positive + Explicit Web Source Fix
+
+- [x] `config-save-json` sensitive field kontrolündeki `cookieSource` false-positive kök nedenini düzelt
+- [x] OpenCode `source=web` seçimini normalize/collector katmanında koru
+- [x] Regresyon testlerini ekle/güncelle (`config`, `cli_config`, `opencode_provider`)
+- [x] Hedefli pytest ve `make health-ci PYTHON=python` ile doğrula
+
+### Review
+
+- Uygulanan değişiklikler:
+  - `core/ai_usage_monitor/config.py`
+    - `is_sensitive_provider_field(...)` artık descriptor biliniyorsa önce secret-field listesine bakıyor; bilinen non-secret provider field’ları (`cookieSource` gibi) regex fallback ile yanlış bloklamıyor.
+    - `normalize_config(...)` içinde `opencode source=web -> auto` zorlaması kaldırıldı.
+  - `core/ai_usage_monitor/providers/opencode.py`
+    - `_configured_source(...)` artık explicit `web` seçimini `auto`ya çevirmiyor.
+- Eklenen/güncellenen testler:
+  - `tests/test_config.py`
+    - `opencode` explicit `web` kaynağını koruma testi
+    - `cookieSource` alanının sensitive sayılmama testi
+  - `tests/test_cli_config.py`
+    - `config-save-json` için `opencode.cookieSource` kabul testi
+    - normalize sonrası `opencode.source == "web"` assertion
+  - `tests/test_opencode_provider.py`
+    - explicit `source=web` + cookie yokken local CLI fallback yapılmaması testi
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_config.py tests/test_cli_config.py tests/test_opencode_provider.py` PASS (`38 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `189 passed, 23 subtests passed`)
+  - Ad-hoc doğrulama: `config-save-json` payload’ında `opencode.cookieSource=off` artık hata vermeden kaydediliyor.
+
+## 2026-03-09 - OpenCode Unavailable + Enabled Provider Visibility Bugfix
+
+- [x] `opencode` local install tespitini GUI PATH drift’e dayanıklı hale getir
+- [x] Config save response’ta secret field geri-taşıma döngüsünü kır (UI follow-up save blokajını önle)
+- [x] İlgili regresyon testlerini ekle/güncelle
+- [x] `make health-ci PYTHON=python` ile final doğrulama yap
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Uygulanan düzeltmeler:
+  - `core/ai_usage_monitor/cli_detect.py`
+    - System bin fallback dizinleri genişletildi (`/usr/local/bin`, `/usr/bin`, `/bin`, `/snap/bin`).
+    - Login shell `command -v` fallback eklendi (safe binary-name guard ile).
+    - Amaç: KDE/GNOME GUI PATH drift durumlarında `opencode` false-unavailable riskini azaltmak.
+  - `core/ai_usage_monitor/cli.py`
+    - `config-save` ve `config-save-json` çıktı payload’ı `sanitize_config_for_ui(...)` ile döndürülüyor.
+    - Amaç: UI staged config’e secret field geri taşınıp sonraki save’leri bloke eden döngüyü kırmak.
+- Eklenen/güncellenen regresyon testleri:
+  - `tests/test_cli_detect.py`
+    - login shell fallback testi
+    - unsafe binary-name shell fallback bloklama testi
+  - `tests/test_cli_config.py`
+    - `config-save-json` sonrası dönen payload’ın sanitize kalmasını ve takip eden save’in fail olmamasını kilitleyen test
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_cli_detect.py tests/test_cli_config.py tests/test_opencode_provider.py` PASS (`28 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `185 passed, 23 subtests passed`)
+
+## 2026-03-09 - Skill Audit Risk Fix Round (High + Medium)
+
+- [x] Provider freshness cache TTL matrisini aç ve cache davranışını testte kilitle
+- [x] OpenRouter/z.ai custom API URL doğrulamasını secure-by-default yap (unsafe override env ile)
+- [x] Popup source presentation içinde `web` kaynağını `API` yerine doğru etiketle
+- [x] Status fetch için failure backoff/negative cache ve timezone-aware incident sort düzeltmesi uygula
+- [x] Local usage token parse akışını bozuk kayıtta kırılmayacak hale getir
+- [x] Codex identity state yolunu runtime state dir ile hizala ve güvenli yazım izinlerini zorla
+- [x] Config save yazımını atomik hale getir
+- [x] README + plan başlıklarındaki dokümantasyon drift’ini güncelle
+- [x] Hedefli pytest seti + `make health-ci PYTHON=python` ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Uygulanan yüksek/orta risk düzeltmeleri:
+  - `core/ai_usage_monitor/provider_freshness.py`
+    - TTL matrisi aktif edildi (`copilot/openrouter/zai/vertexai/ollama/amp/minimax`).
+  - `core/ai_usage_monitor/providers/openrouter.py`
+  - `core/ai_usage_monitor/providers/zai.py`
+  - `core/ai_usage_monitor/shared/url_safety.py`
+    - Custom API URL’ler için secure-by-default doğrulama eklendi (`https` + allowlist host); explicit unsafe override için env kapısı eklendi.
+  - `core/ai_usage_monitor/presentation/popup_vm_source_presentation.py`
+    - `resolvedSource=web` için `activeSourceLabel` artık `Web` üretiyor (`API` değil).
+  - `core/ai_usage_monitor/status.py`
+    - Failure backoff için kısa TTL negative cache eklendi.
+    - Google Workspace incident sort fallback timezone-aware hale getirildi.
+  - `core/ai_usage_monitor/local_usage.py`
+    - Token parse akışı bozuk alanlarda crash etmeyecek şekilde safe-coercion ile sertleştirildi.
+  - `core/ai_usage_monitor/providers/codex.py`
+    - Identity state path runtime state dir’e (`runtime_cache_path`) taşındı.
+    - Identity state write path’i runtime cache atomic write + `0600` izni ile hizalandı.
+  - `core/ai_usage_monitor/config.py`
+    - `save_config` atomik yazım (`NamedTemporaryFile` + `os.replace`) ile güncellendi.
+  - `README.md`
+    - OpenCode source semantiği (`auto/cli/web`) ve örnek config source değeri (`local_cli`) güncellendi.
+  - `docs/plans/*.md` (8 dosya)
+    - `For Claude / superpowers` başlıkları Codex merkezli başlıkla değiştirildi.
+- Eklenen/güncellenen testler:
+  - `tests/test_collector.py`
+  - `tests/test_api_providers.py`
+  - `tests/test_status.py`
+  - `tests/test_local_usage.py`
+  - `tests/test_codex_normalization.py`
+  - `tests/test_popup_vm.py`
+  - `tests/test_config.py`
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_collector.py tests/test_api_providers.py tests/test_status.py tests/test_local_usage.py tests/test_codex_normalization.py tests/test_popup_vm.py tests/test_config.py` PASS (`83 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `199 passed, 23 subtests passed`)
+
+## 2026-03-09 - Enabled Provider Auto-Expand (KDE + GNOME)
+
+- [x] Kök neden: enable toggle sonrası provider satırı/expander’ın açılmamasını doğrula
+- [x] KDE settings provider row’da `enabled=true` anında auto-expand davranışı ekle
+- [x] GNOME prefs provider expander’da aynı davranışı parity olacak şekilde ekle
+- [x] Hedefli doğrulama (health gate + ilgili test seti) çalıştır
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - KDE ve GNOME settings yüzeylerinde `enabled` switch’i state’i kaydediyor, fakat aynı anda expander/expanded state’i güncellemiyordu.
+  - Sonuç olarak kullanıcı provider’ı açsa bile detay alanı kapalı kaldığı için “ana UI’da genişlemiyor” semptomu oluşuyordu.
+- Uygulanan düzeltmeler:
+  - `com.aiusagemonitor/contents/ui/ConfigProvidersSection.qml`
+    - `onEnabledChanged` içinde:
+      - `enabled=true` ise `expandedProviderId = descriptor.id` (anında expand)
+      - `enabled=false` ve row açıksa `expandedProviderId = ""` (collapse)
+  - `gnome-extension/aiusagemonitor@aimonitor/prefsProviderExpander.js`
+    - `notify::active` handler içinde:
+      - `enabled=true` ise `expander.set_expanded(true)`
+      - `enabled=false` ve açıksa `expander.set_expanded(false)`
+- Doğrulama:
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `199 passed, 23 subtests passed`)
+
+## 2026-03-09 - KDE Native Apply + Provider Toggle Propagation Latency Fix
+
+- [x] Kök neden analizi: autosave + polling akışı nedeniyle enable/disable gecikmesini doğrula
+- [x] KDE config tarafında provider değişikliklerini autosave yerine native Apply akışına bağla
+- [x] Ana widget’ta `sharedConfigPayload` apply değişimini yakalayıp shared config save + force refresh tetikle
+- [x] Health gate ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - KDE settings ekranı provider değişikliklerinde `config-save-json` komutunu anında çalıştırıyordu; bu native Apply semantiğini bypass ediyordu.
+  - Ana widget tarafı provider görünürlüğünü polling döngüsünde güncellediği için enable/disable etkisi bir sonraki döngüye kalıyordu.
+- Uygulanan düzeltmeler:
+  - `com.aiusagemonitor/contents/ui/configGeneral.qml`
+    - `setProviderField(...)` ve `toggleOverviewProvider(...)` içinde autosave kaldırıldı.
+    - Provider değişiklikleri artık yalnız `cfg_sharedConfigPayload` üzerinden staged kalıyor; KDE Apply ile commit ediliyor.
+  - `com.aiusagemonitor/contents/ui/main.qml`
+    - `Plasmoid.configuration.sharedConfigPayload` değişimi dinleniyor.
+    - Apply sonrası değişen payload için `config-save-json` backend çağrısı yapılıyor.
+    - Save başarılı olunca `refresh(true)` tetiklenerek popup-vm anında güncelleniyor (polling beklemiyor).
+    - Save runner cleanup/destruction yolu eklendi.
+- Doğrulama:
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `199 passed, 23 subtests passed`)
+
+## 2026-03-09 - OpenCode Unavailable Etiketi (Disabled vs Unavailable) Düzeltmesi
+
+- [x] OpenCode `Unavailable` semptomunu canlı state + config payload üzerinden doğrula
+- [x] `disabled` provider durumunda settings presentation etiketlerini `Unavailable` yerine `Disabled` yap
+- [x] Settings presentation matrix’e `disabled` regresyon senaryosu ekle
+- [x] Hedefli pytest + health gate ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - OpenCode CLI kurulu ve algılanıyor olsa bile provider `disabled` durumda iken state `installed=false` olduğu için settings presentation “Unavailable” üretiyordu.
+  - Bu etiket, gerçek semptomu (kapalı provider) gizleyip “CLI bulunamadı” algısı yaratıyordu.
+- Uygulanan değişiklikler:
+  - `core/ai_usage_monitor/sources/settings_presentation.py`
+    - `disabled` sinyali (`provider.enabled == false` veya `status == disabled`) presentation kararına eklendi.
+    - `sourceStatusLabel`: `Status: Disabled`
+    - `availabilityLabel`: `Disabled`
+    - `sourceReasonLabel`: `Provider disabled`
+    - `subtitle`: `… · disabled`
+    - `statusTags`: `["Disabled"]`
+  - `tests/test_settings_presentation_matrix.py`
+    - Fixture provider payload’ından `enabled` ve `status` alanlarını modele taşıma eklendi.
+  - `tests/fixtures/settings_presentation_matrix.json`
+    - `provider_disabled_status` senaryosu eklendi (`Status: Disabled` beklentisi).
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_settings_presentation_matrix.py` PASS (`1 passed, 4 subtests passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `199 passed, 24 subtests passed`)
+
+## 2026-03-09 - Auto-First Source Policy (Default + Settings UX)
+
+- [x] Config normalize/default akışında hybrid provider default source’u `auto` yap
+- [x] KDE settings source seçeneklerinde `auto`yu önerilen ve birinci seçenek olarak sabitle
+- [x] GNOME settings source seçeneklerinde `auto`yu önerilen ve birinci seçenek olarak sabitle
+- [x] Regresyon testlerini güncelle (`test_config`)
+- [x] Hedefli test + health gate ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - Hybrid provider’larda default source `local_cli` olduğu için kullanıcılar source override davranışını “sistem kararsız” olarak algılıyordu.
+  - Settings yüzeyinde source option sırası `local_cli` öne çıktığı için `auto-first` niyet yansımıyordu.
+- Uygulanan değişiklikler:
+  - `core/ai_usage_monitor/config.py`
+    - `_default_source_for_descriptor(...)` artık descriptor `auto` destekliyorsa default olarak her zaman `auto` dönüyor.
+  - `com.aiusagemonitor/contents/ui/ConfigPresentation.js`
+    - Source seçenekleri unique normalize edildi.
+    - `auto` seçenekler içinde varsa her zaman ilk sıraya taşınıyor.
+    - `auto` label: `Auto (recommended)`.
+    - `defaultPreferredSource(...)` `auto`yu önceliyor.
+  - `gnome-extension/aiusagemonitor@aimonitor/prefsProviderPresentation.js`
+    - Source seçeneklerinde `auto` ilk sıraya alındı.
+    - `sourceModeDisplayLabel('auto')` → `AUTO (RECOMMENDED)`.
+    - Default source label seçiminde `auto` öncelendi.
+  - `gnome-extension/aiusagemonitor@aimonitor/prefsProviderExpander.js`
+    - `normalizedProviderSettings(...)` default source seçiminde `auto` önceliği eklendi.
+  - `tests/test_config.py`
+    - Opencode default source beklentisi `local_cli` → `auto` güncellendi.
+    - Hybrid provider default-source regression testi eklendi.
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_config.py tests/test_cli_config.py` PASS (`31 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `200 passed, 24 subtests passed`)
+
+## 2026-03-09 - Cross-Desktop Provider Toggle Reactivity (KDE + GNOME)
+
+- [x] Tüm provider setinde enable/disable -> `popup-vm` yansımasını backend seviyesinde doğrula
+- [x] GNOME extension tarafında config değişimini event-driven izle ve force refresh ile gecikmeyi kaldır
+- [x] Lifecycle cleanup ekle (monitor + debounce timeout) ve teardown güvenliğini koru
+- [x] KDE/GNOME parity için hedefli regresyon testleri çalıştır
+- [x] Health gate ve review/lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - Backend tarafında provider enable/disable anında uygulanıyor; gecikme UI katmanında, özellikle GNOME extension’ın yalnız periyodik refresh ile (`min 20s`) güncellenmesinden kaynaklanıyordu.
+  - Bu yüzden settings’te toggle sonrası ana panel/popup görünümü bir sonraki polling turuna kadar eski provider listesini gösterebiliyordu.
+- Uygulanan değişiklikler:
+  - `gnome-extension/aiusagemonitor@aimonitor/indicatorLifecycleMixin.js`
+    - `~/.config/ai-usage-monitor/` dizini için file monitor eklendi.
+    - `config.json` değişim olayları (`changed/moved/replace` akışları) yakalanıp debounced `refresh(true)` tetikleniyor.
+    - Yeni cleanup yolları eklendi:
+      - `_clearConfigRefreshTimeout()`
+      - `_clearConfigMonitor()`
+  - `gnome-extension/aiusagemonitor@aimonitor/extension.js`
+    - Indicator init’te config monitor state alanları başlatıldı.
+    - `_startConfigMonitor()` çağrısı eklendi.
+    - `destroy()` içinde config monitor + debounce timeout temizliği eklendi.
+- Doğrulama:
+  - `python3 .../fetch_all_usage.py config-save-json` + `popup-vm --force` ile tüm provider’lar tek tek enable edilip doğrulandı: `tested=12`, `mismatches=[]`.
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_config.py tests/test_cli_config.py tests/test_popup_vm.py tests/test_settings_presentation_matrix.py` PASS (`57 passed, 4 subtests passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `200 passed, 24 subtests passed`)
+
+## 2026-03-09 - Gemini OAuth Credential Format Uyumluluğu
+
+- [x] Kök neden doğrulaması: `~/.gemini/oauth_creds.json` formatı ile refresh akışındaki alan beklentisini karşılaştır
+- [x] `refresh_gemini_token` içinde modern Gemini credential şemasını destekle (`id_token` tabanlı client id fallback + optional client secret)
+- [x] Refresh sonrası credential persist alanlarını (`expiry_date`) geriye uyumlu şekilde yaz
+- [x] Regresyon testi ekle (id_token -> client id fallback, secret olmadan refresh payload)
+- [x] Hedefli pytest + health gate + canlı `popup-vm` doğrulamasını çalıştır
+
+### Review
+
+- Kök neden:
+  - Gemini provider refresh akışı yalnız credential dosyasındaki alanlara bakıyordu.
+  - Gerçek dosya formatı (`~/.gemini/oauth_creds.json`) çoğu kurulumda `client_id/client_secret` taşımıyor; `id_token` + CLI install içindeki `oauth2.js` üzerinden türetme gerekiyor.
+  - Bu fallback olmadığı için 401 sonrası auth state yanlış negatife düşüyordu.
+- Uygulanan değişiklikler:
+  - `core/ai_usage_monitor/shared/oauth.py`
+    - `id_token` JWT payload’ından `aud/azp` ile `client_id` fallback eklendi.
+    - Gemini CLI kurulumundaki `oauth2.js` dosyasından (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`) credential extraction eklendi.
+    - 400 hata sınıflaması iyileştirildi (`client_secret is missing` ayrı raporlanıyor).
+    - Refresh sonrası `expiry` yanında `expiry_date` da (ms) yazılıyor (Gemini CLI formatıyla uyum).
+  - `tests/test_shared_helpers.py`
+    - `id_token` üzerinden `client_id` çözümleme testi.
+    - CLI `oauth2.js` içinden `client_id/client_secret` extraction testi.
+    - `client_id` çözülemiyorsa net hata döndürme testi.
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_shared_helpers.py tests/test_gemini_provider.py` PASS (`12 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `203 passed, 24 subtests passed`)
+  - Canlı kontrol:
+    - `state` çıktısında Gemini artık `authenticated=True`, `status=ok`, metric payload dolu.
+
+## 2026-03-09 - Tray Paneli Seçili Provider ile Senkronla (KDE + GNOME)
+
+- [x] KDE popup tab seçimini runtime state olarak sakla
+- [x] KDE backend refresh çağrısında persisted panel-tool yerine runtime seçimi önceliklendir
+- [x] GNOME refresh çağrısında `_selectedPopupProvider` varsa backend’e bu id’yi geçir
+- [x] GNOME tab seçimi değiştiğinde force refresh tetikle
+- [x] Health gate ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - Tray/panel metrik sağlayıcısı backend `popup-vm` çağrısında yalnız persisted `panel-tool` değerinden türetiliyordu.
+  - Popup içinde anlık provider sekmesi değişse bile bu seçim backend’e taşınmadığı için panel, kullanıcı seçiminden kopuk kalıyordu.
+- Uygulanan değişiklikler:
+  - `com.aiusagemonitor/contents/ui/FullRepresentation.qml`
+    - Yeni `providerSelected(providerId)` sinyali eklendi; sekme seçimi değişince emit ediliyor.
+  - `com.aiusagemonitor/contents/ui/main.qml`
+    - `runtimeSelectedProviderId` eklendi.
+    - `FullRepresentation.onProviderSelected` ile runtime seçim set edilip `refresh(true)` tetikleniyor.
+    - `refresh(...)` içinde backend’e gönderilen preferred provider id artık `runtimeSelectedProviderId || panelTool`.
+    - Runtime seçimin payload’da artık görünmeyen provider’a işaret etmesi durumunda otomatik temizleme eklendi.
+  - `gnome-extension/aiusagemonitor@aimonitor/indicatorLifecycleMixin.js`
+    - `_preferredRefreshProviderId()` eklendi (`_selectedPopupProvider` öncelikli, sonra persisted panel-tool fallback).
+    - `_refresh(...)` artık bu resolver’ı kullanıyor.
+    - `_selectProvider(...)` değişimde `refresh(true)` tetikliyor.
+- Doğrulama:
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `203 passed, 24 subtests passed`)
+
+## 2026-03-09 - Gemini Model Listesini Aktif Modelle Sınırla
+
+- [x] Gemini popup metriklerindeki model satırlarının üretim noktasını doğrula
+- [x] Gemini için bucket listeden yalnız aktif modeli gösteren filtreyi uygula
+- [x] Regresyon testi ekle (`test_popup_vm`)
+- [x] Hedefli pytest + health gate ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - `provider_metrics_vm` içindeki `bucket_metrics_vm(...)` tüm `extras.buckets` girdilerini UI metric satırına dönüştürüyordu.
+  - Gemini API çoklu model kotası döndürdüğü için popup diğer provider’lardan farklı olarak kalabalık model listesi gösteriyordu.
+- Uygulanan değişiklikler:
+  - `core/ai_usage_monitor/presentation/popup_vm_metrics_core.py`
+    - Gemini için `_visible_buckets_for_provider(...)` eklendi.
+    - Filtreleme önceliği: `extras.model` -> `extras.primaryModel` -> fallback `ilk bucket`.
+    - `models/<id>` ve `<id>` karşılaştırmalarını uyumlu yapmak için `_normalized_model_id(...)` eklendi.
+  - `tests/test_popup_vm.py`
+    - `test_gemini_bucket_metrics_only_show_active_model` eklendi; çoklu bucket payload’ında tek model satırına düştüğü kilitlendi.
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_popup_vm.py tests/test_gemini_provider.py` PASS (`31 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `204 passed, 24 subtests passed`)
+
+## 2026-03-09 - Gemini Source Etiketini OAuth Semantiğiyle Hizala
+
+- [x] Gemini provider descriptor/source kimliğinde API yerine OAuth semantiğini uygula
+- [x] Usage dashboard source map’ine `oauth` anahtarını ekle
+- [x] Gemini provider test beklentilerini güncelle
+- [x] Hedefli pytest + health gate ile doğrula
+- [x] Review ve lessons kaydını güncelle
+
+### Review
+
+- Kök neden:
+  - Gemini collector OAuth token ile çalışmasına rağmen `ProviderState.source="api"` ürettiği için popup source badge “API” görünüyordu.
+  - Bu, gerçek çalışma modunu yanlış yansıtıp kullanıcıda auth/config karışıklığı üretiyordu.
+- Uygulanan değişiklikler:
+  - `core/ai_usage_monitor/providers/gemini.py`
+    - Descriptor `source_modes` alanına `oauth` eklendi (`("auto", "oauth")`).
+    - `usage_dashboard_by_source` içine `oauth` map’i eklendi.
+    - Tüm Gemini state çıktılarında source `oauth` olacak şekilde tek sabit (`_GEMINI_SOURCE_ID`) tanımlandı.
+  - `tests/test_gemini_provider.py`
+    - `state.source` beklentileri `api` -> `oauth` güncellendi.
+- Doğrulama:
+  - `PYTHONPATH=. ./.venv/bin/python -m pytest -q tests/test_gemini_provider.py tests/test_popup_vm.py tests/test_provider_registry_shape.py` PASS (`36 passed`)
+  - `make health-ci PYTHON=python` PASS (`17 passed/warned, 0 failed, 0 warnings`; `204 passed, 24 subtests passed`)

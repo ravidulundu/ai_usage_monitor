@@ -40,7 +40,7 @@ _SESSION_KEYS = (
 
 _LOCAL_SOURCE_IDS = {"cli", "local", "oauth", "local_cli"}
 _API_SOURCE_IDS = {"api"}
-_WEB_SOURCE_IDS = {"web", "remote"}
+_WEB_SOURCE_IDS = {"web"}
 
 
 def normalize(value: Any) -> str:
@@ -85,6 +85,8 @@ def source_id(provider: ProviderState, configured_source: str) -> str:
 
 def source_mode(source_id_value: str) -> str:
     normalized = normalize(source_id_value)
+    if normalized == "remote":
+        normalized = "web"
     if normalized in _LOCAL_SOURCE_IDS:
         return "local_cli"
     if normalized in _API_SOURCE_IDS:

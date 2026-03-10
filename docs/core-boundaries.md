@@ -5,6 +5,9 @@
 - `core/ai_usage_monitor/providers/`
   - Provider-specific fetch/parsing/auth logic
   - No renderer imports
+- `core/ai_usage_monitor/archived_providers/`
+  - Dormant or historical provider implementations kept outside the shipped runtime path
+  - No active registry or fetch-strategy participation
 - `core/ai_usage_monitor/sources/`
   - Source policy + source model production
   - Canonical source decisioning (`preferred/resolved/fallback/availability`)
@@ -38,6 +41,7 @@
   - `core.ai_usage_monitor.collect_popup_vm_payload`
 - Internal:
   - Provider/sources/presentation helper modules
+  - Archived provider implementations
   - Backward-compatible shims (`source_model.py`, `source_strategy.py`, `util.py`)
 
 ## Core Functions To Keep Under Regression Tests

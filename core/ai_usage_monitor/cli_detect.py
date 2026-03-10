@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -15,6 +17,10 @@ def _is_executable_file(path: Path) -> bool:
 def _candidate_bin_dirs() -> list[Path]:
     home = Path.home()
     candidates = [
+        Path("/usr/local/bin"),
+        Path("/usr/bin"),
+        Path("/bin"),
+        Path("/snap/bin"),
         home / ".local" / "bin",
         home / ".bun" / "bin",
         home / ".npm-global" / "bin",
@@ -55,6 +61,47 @@ def _candidate_bin_dirs() -> list[Path]:
     return unique
 
 
+_SAFE_BINARY_PATTERN = re.compile(r"^[A-Za-z0-9._+-]+$")
+
+
+def _resolve_via_login_shell(binary_name: str) -> str | None:
+    if not _SAFE_BINARY_PATTERN.fullmatch(binary_name):
+        return None
+
+    shells: list[str] = []
+    env_shell = os.environ.get("SHELL")
+    if env_shell:
+        shells.append(env_shell)
+    shells.extend(("/bin/zsh", "/bin/bash", "/bin/sh"))
+
+    seen: set[str] = set()
+    for shell in shells:
+        if shell in seen:
+            continue
+        seen.add(shell)
+        shell_path = Path(shell)
+        if not _is_executable_file(shell_path):
+            continue
+        try:
+            probe = subprocess.run(
+                [shell, "-lc", f"command -v -- {binary_name} 2>/dev/null || true"],
+                capture_output=True,
+                text=True,
+                timeout=1.0,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+
+        resolved = str(probe.stdout or "").strip().splitlines()
+        if not resolved:
+            continue
+        candidate = Path(resolved[0]).expanduser()
+        if _is_executable_file(candidate):
+            return str(candidate)
+    return None
+
+
 def resolve_cli_binary(binary_name: str, env_var: str | None = None) -> str | None:
     if env_var:
         override = os.environ.get(env_var)
@@ -71,5 +118,9 @@ def resolve_cli_binary(binary_name: str, env_var: str | None = None) -> str | No
         candidate = directory / binary_name
         if _is_executable_file(candidate):
             return str(candidate)
+
+    shell_resolved = _resolve_via_login_shell(binary_name)
+    if shell_resolved:
+        return shell_resolved
 
     return None

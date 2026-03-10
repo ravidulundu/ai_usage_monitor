@@ -8,6 +8,13 @@ from core.ai_usage_monitor.models import ProviderState
 _LOCAL_SOURCE_IDS = {"cli", "local", "oauth", "local_cli"}
 
 
+def _normalize_source_id(source_id: str) -> str:
+    normalized = str(source_id or "").strip().lower()
+    if normalized == "remote":
+        return "web"
+    return normalized
+
+
 def provider_subtitle(
     provider: ProviderState, source_presentation: dict[str, Any] | None = None
 ) -> str:
@@ -30,7 +37,7 @@ def provider_source_model(provider: ProviderState) -> dict[str, Any]:
     if isinstance(source_model, dict):
         return source_model
 
-    source_id = str(provider.source or "").lower()
+    source_id = _normalize_source_id(str(provider.source or "").lower())
     return {
         "canonicalMode": "unavailable" if provider.installed is False else "api",
         "providerCapabilities": {
@@ -107,6 +114,7 @@ def _dashboard_source_key(provider: ProviderState, source_model: dict[str, Any])
         .strip()
         .lower()
     )
+    resolved = _normalize_source_id(resolved)
     plan = (
         str(provider.extras.get("plan") or "").strip().lower()
         if isinstance(provider.extras, dict)

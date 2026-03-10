@@ -38,6 +38,93 @@ from core.ai_usage_monitor.presentation.status_vm import (
 )
 
 
+def _provider_identity_fields(
+    provider: ProviderState,
+    source_model: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "identity": provider.metadata.get("identity")
+        if isinstance(provider.metadata, dict)
+        else None,
+        "identityFingerprint": provider_identity_fingerprint(provider),
+        "accountFingerprint": provider_account_fingerprint(provider),
+        "sourceMode": provider_identity_source_mode(provider, source_model),
+        "stateIdentityKey": provider_state_identity_key(provider),
+        "switchingState": switching_state_vm(provider),
+    }
+
+
+def _provider_source_fields(
+    source_model: dict[str, Any],
+    source_presentation: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "sourceModel": source_model,
+        "providerCapabilities": source_model.get("providerCapabilities", {}),
+        "sourceStrategy": source_model.get("sourceStrategy", {}),
+        "availability": source_model.get("availability", {}),
+        "sourceLabel": source_model.get("sourceLabel"),
+        "sourceDetails": source_model.get("sourceDetails"),
+        "sourcePresentation": source_presentation,
+        "authState": source_model.get("authState"),
+        "fallbackState": source_model.get("fallbackState"),
+        "preferredSource": source_model.get("preferredSource"),
+        "resolvedSource": source_model.get("resolvedSource"),
+        "availableSources": source_model.get("availableSources", []),
+        "fallbackReason": source_model.get("fallbackReason"),
+        "localToolInstalled": source_model.get("localToolInstalled"),
+        "apiConfigured": source_model.get("apiConfigured"),
+        "authValid": source_model.get("authValid"),
+    }
+
+
+def _provider_status_fields(
+    *,
+    provider: ProviderState,
+    stale: bool,
+    status_url: str | None,
+    source_presentation: dict[str, Any],
+) -> dict[str, Any]:
+    status_state = provider_status_state(
+        provider=provider,
+        status_url=status_url,
+        stale=stale,
+        source_presentation=source_presentation,
+    )
+    status_presentation = status_presentation_vm(status_state)
+    error_message, source_unavailable_text = provider_error_state(
+        provider, source_presentation
+    )
+    effective_status_url = status_state.get("statusPageUrl") or status_url
+    return {
+        "statusState": status_state,
+        "statusPresentation": status_presentation,
+        "effectiveStatusUrl": effective_status_url,
+        "errorState": {
+            "hasError": error_message is not None
+            or bool(source_unavailable_text and not provider.error),
+            "message": error_message or source_unavailable_text,
+        },
+    }
+
+
+def _provider_action_fields(
+    provider: ProviderState,
+    dashboard_url: str | None,
+    effective_status_url: str | None,
+) -> dict[str, Any]:
+    return {
+        "planLabel": plan_label(provider),
+        "links": {
+            "dashboardUrl": dashboard_url,
+            "statusUrl": effective_status_url,
+        },
+        "extraUsage": extra_usage_vm(provider),
+        "cost": cost_vm(provider),
+        "actions": actions_vm(dashboard_url, effective_status_url),
+    }
+
+
 def provider_vm(
     provider: ProviderState,
     descriptor_map: dict[str, Any],
@@ -65,23 +152,18 @@ def provider_vm(
         source_model=source_model,
         rate_limits_missing=rate_limits_missing,
     )
-    status_state = provider_status_state(
+    status_fields = _provider_status_fields(
         provider=provider,
-        status_url=status_url,
         stale=stale,
+        status_url=status_url,
         source_presentation=source_presentation,
     )
-    status_presentation = status_presentation_vm(status_state)
     metrics = provider_metrics_vm(
         provider=provider,
         stale=stale,
         rate_limits_missing=rate_limits_missing,
         source_presentation=source_presentation,
     )
-    error_message, source_unavailable_text = provider_error_state(
-        provider, source_presentation
-    )
-    effective_status_url = status_state.get("statusPageUrl") or status_url
 
     return {
         "id": provider.id,
@@ -92,47 +174,21 @@ def provider_vm(
             provider.display_name,
             provider_branding.get("badgeText"),
         ),
-        "sourceModel": source_model,
-        "providerCapabilities": source_model.get("providerCapabilities", {}),
-        "sourceStrategy": source_model.get("sourceStrategy", {}),
-        "availability": source_model.get("availability", {}),
-        "sourceLabel": source_model.get("sourceLabel"),
-        "sourceDetails": source_model.get("sourceDetails"),
-        "sourcePresentation": source_presentation,
-        "statusState": status_state,
-        "statusPresentation": status_presentation,
-        "authState": source_model.get("authState"),
-        "fallbackState": source_model.get("fallbackState"),
-        "preferredSource": source_model.get("preferredSource"),
-        "resolvedSource": source_model.get("resolvedSource"),
-        "availableSources": source_model.get("availableSources", []),
-        "fallbackReason": source_model.get("fallbackReason"),
-        "localToolInstalled": source_model.get("localToolInstalled"),
-        "apiConfigured": source_model.get("apiConfigured"),
-        "authValid": source_model.get("authValid"),
-        "identity": provider.metadata.get("identity")
-        if isinstance(provider.metadata, dict)
-        else None,
-        "identityFingerprint": provider_identity_fingerprint(provider),
-        "accountFingerprint": provider_account_fingerprint(provider),
-        "sourceMode": provider_identity_source_mode(provider, source_model),
-        "stateIdentityKey": provider_state_identity_key(provider),
-        "switchingState": switching_state_vm(provider),
+        **_provider_source_fields(source_model, source_presentation),
+        **_provider_identity_fields(provider, source_model),
         "selected": selected,
         "visible": True,
         "available": provider_available,
         "stale": stale,
-        "errorState": {
-            "hasError": error_message is not None
-            or bool(source_unavailable_text and not provider.error),
-            "message": error_message or source_unavailable_text,
-        },
-        "planLabel": plan_label(provider),
+        "statusState": status_fields["statusState"],
+        "statusPresentation": status_fields["statusPresentation"],
+        "errorState": status_fields["errorState"],
         "updatedText": updated_text,
         "subtitle": provider_subtitle(provider, source_presentation),
-        "links": {"dashboardUrl": dashboard_url, "statusUrl": effective_status_url},
         "metrics": metrics,
-        "extraUsage": extra_usage_vm(provider),
-        "cost": cost_vm(provider),
-        "actions": actions_vm(dashboard_url, effective_status_url),
+        **_provider_action_fields(
+            provider,
+            dashboard_url,
+            status_fields["effectiveStatusUrl"],
+        ),
     }

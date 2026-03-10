@@ -1,9 +1,13 @@
 import unittest
+import stat
 from unittest import mock
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from core.ai_usage_monitor.providers.codex import (
+    _codex_identity_state_path,
+    _load_codex_identity_state,
+    _save_codex_identity_state,
     _latest_token_count_snapshot,
     collect_codex,
     normalize_codex_rate_limits,
@@ -51,7 +55,7 @@ class CodexNormalizationTests(unittest.TestCase):
                 )
             )
 
-            payload, model = _latest_token_count_snapshot(root)
+            payload, model, _local_usage = _latest_token_count_snapshot(root)
 
         self.assertEqual(
             (payload.get("rate_limits") or {}).get("primary", {}).get("used_percent"),
@@ -77,12 +81,36 @@ class CodexNormalizationTests(unittest.TestCase):
                 )
             )
 
-            payload, model = _latest_token_count_snapshot(
+            payload, model, _local_usage = _latest_token_count_snapshot(
                 root, min_timestamp="2026-03-07T05:41:00+00:00"
             )
 
         self.assertIsNone(payload)
         self.assertEqual(model, "")
+
+    def test_latest_token_count_snapshot_uses_supplied_files_without_reglobbing(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            snapshot_file = root / "2026" / "03" / "07" / "a.jsonl"
+            snapshot_file.parent.mkdir(parents=True, exist_ok=True)
+            snapshot_file.write_text(
+                "\n".join(
+                    [
+                        '{"type":"turn_context","payload":{"model":"gpt-5.4"}}',
+                        '{"timestamp":"2026-03-07T05:40:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":72},"secondary":{"used_percent":39}}}}',
+                    ]
+                )
+            )
+
+            with mock.patch.object(
+                Path, "rglob", side_effect=AssertionError("unexpected rglob")
+            ):
+                payload, model, _local_usage = _latest_token_count_snapshot(
+                    root, files=[snapshot_file]
+                )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(model, "gpt-5.4")
 
     def test_codex_normalization_tolerates_missing_rate_limits(self):
         state = normalize_codex_rate_limits({"rate_limits": None}, model="gpt-5-codex")
@@ -134,6 +162,23 @@ class CodexNormalizationTests(unittest.TestCase):
         self.assertTrue(state.installed)
         self.assertEqual(state.extras.get("accountId"), "new-account")
         self.assertFalse(state.extras.get("hasData", True))
+
+    def test_codex_identity_state_respects_runtime_state_dir_and_permissions(self):
+        with TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                "os.environ", {"AI_USAGE_MONITOR_STATE_DIR": tmp}, clear=False
+            ):
+                _save_codex_identity_state(
+                    identity_key="account-1",
+                    account_id="account-1",
+                    switch_detected_at="2026-03-09T00:00:00+00:00",
+                )
+                path = _codex_identity_state_path()
+                payload = _load_codex_identity_state()
+                self.assertEqual(path, Path(tmp) / "codex_identity_state.json")
+                self.assertTrue(path.exists())
+                self.assertEqual(payload.get("identityKey"), "account-1")
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
 
 if __name__ == "__main__":

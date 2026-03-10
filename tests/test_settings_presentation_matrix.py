@@ -28,8 +28,10 @@ def _provider(payload: dict) -> ProviderState:
     return ProviderState(
         id=str(payload.get("id") or ""),
         display_name=str(payload.get("displayName") or payload.get("id") or ""),
+        enabled=bool(payload.get("enabled", True)),
         installed=bool(payload.get("installed", False)),
         authenticated=bool(payload.get("authenticated", True)),
+        status=str(payload.get("status") or ""),
         source=str(payload.get("source") or "auto"),
         error=payload.get("error"),
     )
@@ -56,12 +58,37 @@ class SettingsPresentationMatrixTests(unittest.TestCase):
                 settings_presentation = dict(
                     source_model.get("settingsPresentation") or {}
                 )
+                self.assertTrue(
+                    {
+                        "canonicalMode",
+                        "providerCapabilities",
+                        "sourceStrategy",
+                        "availability",
+                        "settingsPresentation",
+                        "resolvedSource",
+                        "preferredSource",
+                    }
+                    <= set(source_model)
+                )
 
                 for key in SETTINGS_PRESENTATION_CANONICAL_FIELDS:
                     self.assertIn(key, settings_presentation)
-                    self.assertIsInstance(settings_presentation[key], str)
+                    if key == "statusTags":
+                        self.assertIsInstance(settings_presentation[key], list)
+                    else:
+                        self.assertIsInstance(settings_presentation[key], str)
 
                 self.assertEqual(source_model["canonicalMode"], expect["canonicalMode"])
+                self.assertEqual(
+                    source_model["sourceStrategy"]["preferredSource"],
+                    source_model["preferredSource"],
+                )
+                self.assertEqual(
+                    source_model["sourceStrategy"]["resolvedSource"],
+                    source_model["resolvedSource"],
+                )
+                self.assertIn("apiConfigured", source_model["availability"])
+                self.assertIn("authValid", source_model["availability"])
                 self.assertEqual(
                     settings_presentation["sourceModeLabel"], expect["sourceModeLabel"]
                 )

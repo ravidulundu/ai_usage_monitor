@@ -4,6 +4,8 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as P5Support
 
+import "ConfigBackend.js" as ConfigBackend
+
 PlasmoidItem {
     id: root
 
@@ -23,6 +25,10 @@ PlasmoidItem {
     property var lastRenderedIdentityByProvider: ({})
     property var identityMismatchByProvider: ({})
     property string activeRunnerCommand: ""
+    property string activeConfigSaveCommand: ""
+    property string lastAppliedSharedConfigPayload: ""
+    property string sharedConfigPayload: Plasmoid.configuration.sharedConfigPayload || "{}"
+    property string runtimeSelectedProviderId: ""
 
     readonly property var popupTabs: popupData && popupData.tabs ? popupData.tabs : []
     readonly property var popupProviders: popupData && popupData.providers ? popupData.providers : []
@@ -109,7 +115,16 @@ PlasmoidItem {
         ? fullRepresentation
         : compactRepresentation
     compactRepresentation: CompactRepresentation { }
-    fullRepresentation: FullRepresentation { }
+    fullRepresentation: FullRepresentation {
+        onProviderSelected: function(providerId) {
+            if (!providerId || providerId === "overview")
+                return
+            if (root.runtimeSelectedProviderId === providerId)
+                return
+            root.runtimeSelectedProviderId = providerId
+            root.refresh(true)
+        }
+    }
 
     Layout.fillWidth: false
     Layout.minimumWidth: 66
@@ -129,6 +144,11 @@ PlasmoidItem {
             var stdout = (data["stdout"] || "").trim()
             var stderr = (data["stderr"] || "").trim()
             if (stdout === "") {
+                root.popupData = ({})
+                root.identityMismatchByProvider = ({})
+                root.lastRenderedIdentityByProvider = ({})
+                root.identityRefreshPending = false
+                identityRefreshTimer.stop()
                 root.lastError = stderr || "No output from script"
                 return
             }
@@ -137,6 +157,17 @@ PlasmoidItem {
 
                 if (result.popup) {
                     var providersSnapshot = result.popup.providers || []
+                    if (root.runtimeSelectedProviderId) {
+                        var hasRuntimeProvider = false
+                        for (var idx = 0; idx < providersSnapshot.length; idx++) {
+                            if (providersSnapshot[idx] && providersSnapshot[idx].id === root.runtimeSelectedProviderId) {
+                                hasRuntimeProvider = true
+                                break
+                            }
+                        }
+                        if (!hasRuntimeProvider)
+                            root.runtimeSelectedProviderId = ""
+                    }
                     root.pruneIdentityCaches(providersSnapshot)
                     root.identityMismatchByProvider = root.buildIdentityMismatchMap(providersSnapshot)
                     root.popupData = result.popup
@@ -157,10 +188,16 @@ PlasmoidItem {
 
                 root.identityRefreshPending = false
                 identityRefreshTimer.stop()
+                root.popupData = ({})
+                root.identityMismatchByProvider = ({})
+                root.lastRenderedIdentityByProvider = ({})
                 root.lastError = "Unsupported payload: popup-vm expected"
             } catch (e) {
                 root.identityRefreshPending = false
                 identityRefreshTimer.stop()
+                root.popupData = ({})
+                root.identityMismatchByProvider = ({})
+                root.lastRenderedIdentityByProvider = ({})
                 root.lastError = "Parse error: " + e.message
             }
         }
@@ -173,19 +210,39 @@ PlasmoidItem {
         activeRunnerCommand = ""
     }
 
-    function refresh() {
+    function refresh(forceRefresh) {
         if (scriptPath === "")
             return
         root.isLoading = true
         disconnectRunnerSources()
-        var preferredProviderId = Plasmoid.configuration.panelTool || ""
+        var preferredProviderId = root.runtimeSelectedProviderId || (Plasmoid.configuration.panelTool || "")
         if (preferredProviderId === "auto" || preferredProviderId === "overview")
             preferredProviderId = ""
-        var command = "python3 " + scriptPath + " popup-vm"
+        var command = "python3 " + ConfigBackend.shellQuote(scriptPath) + " popup-vm"
         if (preferredProviderId !== "")
-            command += " " + preferredProviderId
+            command += " " + ConfigBackend.shellQuote(preferredProviderId)
+        if (forceRefresh === true)
+            command += " --force"
         runner.connectSource(command)
         activeRunnerCommand = command
+    }
+
+    function applySharedConfigPayload(payload) {
+        var raw = String(payload || "").trim()
+        if (raw === "" || raw === lastAppliedSharedConfigPayload)
+            return
+
+        try {
+            JSON.parse(raw)
+        } catch (e) {
+            root.lastError = "Invalid shared config payload: " + e.message
+            return
+        }
+
+        var command = "python3 " + ConfigBackend.shellQuote(scriptPath)
+            + " config-save-json " + ConfigBackend.shellQuote(raw)
+        configSaveRunner.connectSource(command)
+        activeConfigSaveCommand = command
     }
 
     Timer {
@@ -193,7 +250,7 @@ PlasmoidItem {
         interval: root.refreshInterval
         running: true
         repeat: true
-        onTriggered: root.refresh()
+        onTriggered: root.refresh(false)
     }
 
     Timer {
@@ -201,19 +258,56 @@ PlasmoidItem {
         interval: 300
         running: false
         repeat: false
-        onTriggered: root.refresh()
+        onTriggered: root.refresh(true)
     }
+
+    P5Support.DataSource {
+        id: configSaveRunner
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: function(sourceName, data) {
+            disconnectSource(sourceName)
+            if (sourceName === root.activeConfigSaveCommand)
+                root.activeConfigSaveCommand = ""
+
+            var stdout = (data["stdout"] || "").trim()
+            var stderr = (data["stderr"] || "").trim()
+            if (stdout === "") {
+                root.lastError = stderr || "Shared config save failed"
+                return
+            }
+
+            try {
+                var payload = JSON.parse(stdout)
+                if (payload && payload.ok === true) {
+                    root.lastAppliedSharedConfigPayload = root.sharedConfigPayload
+                    root.refresh(true)
+                    return
+                }
+                root.lastError = stderr || "Shared config save returned invalid payload"
+            } catch (e) {
+                root.lastError = "Shared config save parse error: " + e.message
+            }
+        }
+    }
+
+    onSharedConfigPayloadChanged: applySharedConfigPayload(sharedConfigPayload)
 
     onRefreshIntervalChanged: {
         refreshTimer.interval = root.refreshInterval
         refreshTimer.restart()
     }
 
-    Component.onCompleted: root.refresh()
+    Component.onCompleted: root.refresh(true)
     Component.onDestruction: {
         refreshTimer.stop()
         identityRefreshTimer.stop()
         root.disconnectRunnerSources()
+        var configSources = configSaveRunner.connectedSources || []
+        for (var i = 0; i < configSources.length; i++)
+            configSaveRunner.disconnectSource(configSources[i])
+        activeConfigSaveCommand = ""
         root.popupData = ({})
         root.lastRenderedIdentityByProvider = ({})
         root.identityMismatchByProvider = ({})
@@ -222,7 +316,7 @@ PlasmoidItem {
 
     onExpandedChanged: {
         if (expanded)
-            root.refresh()
+            root.refresh(true)
         else
             identityRefreshTimer.stop()
     }

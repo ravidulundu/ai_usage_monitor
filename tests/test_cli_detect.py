@@ -44,6 +44,47 @@ class CliDetectTests(unittest.TestCase):
 
         self.assertEqual(resolved, str(binary))
 
+    def test_resolve_cli_binary_uses_login_shell_fallback(self):
+        with mock.patch.dict("os.environ", {"SHELL": "/bin/zsh"}, clear=False):
+            with mock.patch(
+                "core.ai_usage_monitor.cli_detect.shutil.which", return_value=None
+            ):
+                with mock.patch(
+                    "core.ai_usage_monitor.cli_detect._candidate_bin_dirs",
+                    return_value=[],
+                ):
+                    with mock.patch(
+                        "core.ai_usage_monitor.cli_detect._is_executable_file",
+                        side_effect=lambda p: (
+                            str(p) in {"/bin/zsh", "/opt/bin/opencode"}
+                        ),
+                    ):
+                        completed = mock.Mock(stdout="/opt/bin/opencode\n")
+                        with mock.patch(
+                            "core.ai_usage_monitor.cli_detect.subprocess.run",
+                            return_value=completed,
+                        ) as run_mock:
+                            resolved = resolve_cli_binary("opencode")
+
+        self.assertEqual(resolved, "/opt/bin/opencode")
+        run_mock.assert_called_once()
+
+    def test_resolve_cli_binary_rejects_unsafe_binary_name_for_shell_fallback(self):
+        with mock.patch(
+            "core.ai_usage_monitor.cli_detect.shutil.which", return_value=None
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.cli_detect._candidate_bin_dirs",
+                return_value=[],
+            ):
+                with mock.patch(
+                    "core.ai_usage_monitor.cli_detect.subprocess.run"
+                ) as run_mock:
+                    resolved = resolve_cli_binary("opencode; rm -rf /")
+
+        self.assertIsNone(resolved)
+        run_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

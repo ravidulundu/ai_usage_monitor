@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
-
-from core.ai_usage_monitor.models import ProviderState
 
 
 @dataclass(frozen=True)
@@ -73,11 +70,3 @@ class ProviderDescriptor:
             return by_source[source_key]
         default_url = str(self.usage_dashboard_default_url or "").strip()
         return default_url or None
-
-
-class ProviderCollector(Protocol):
-    descriptor: ProviderDescriptor
-
-    def collect_legacy(self) -> dict: ...
-
-    def collect_state(self) -> ProviderState: ...

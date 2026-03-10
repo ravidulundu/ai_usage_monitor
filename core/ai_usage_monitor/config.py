@@ -3,14 +3,118 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from core.ai_usage_monitor.providers.base import ProviderDescriptor
 from core.ai_usage_monitor.providers.registry import ProviderRegistry
 
 _LOCAL_SOURCE_IDS = {"cli", "local", "oauth"}
-_REMOTE_SOURCE_IDS = {"api", "web", "remote"}
+_REMOTE_SOURCE_IDS = {"api", "web"}
+_SENSITIVE_FIELD_PATTERN = re.compile(
+    r"(token|secret|password|cookie|api[_-]?key|authorization)",
+    re.IGNORECASE,
+)
+
+
+def _provider_registry() -> ProviderRegistry:
+    return ProviderRegistry()
+
+
+def _descriptor_by_id(provider_id: str) -> ProviderDescriptor | None:
+    for descriptor in _provider_registry().list_descriptors():
+        if descriptor.id == provider_id:
+            return descriptor
+    return None
+
+
+def _allowed_provider_field_keys(descriptor: ProviderDescriptor) -> set[str]:
+    keys = {"enabled", "source"}
+    for field in descriptor.config_fields:
+        keys.add(field.key)
+    return keys
+
+
+def _secret_provider_field_keys(descriptor: ProviderDescriptor) -> set[str]:
+    return {field.key for field in descriptor.config_fields if field.secret}
+
+
+def is_sensitive_provider_field(provider_id: str, field: str) -> bool:
+    descriptor = _descriptor_by_id(provider_id)
+    if descriptor:
+        if field in _secret_provider_field_keys(descriptor):
+            return True
+        # Known non-secret provider fields should not be blocked by name pattern.
+        if field in _allowed_provider_field_keys(descriptor):
+            return False
+    return bool(_SENSITIVE_FIELD_PATTERN.search(field))
+
+
+def sanitize_config_for_ui(config: dict[str, Any]) -> dict[str, Any]:
+    sanitized = normalize_config(config)
+    providers = sanitized.get("providers")
+    if not isinstance(providers, list):
+        return sanitized
+    for entry in providers:
+        if not isinstance(entry, dict):
+            continue
+        provider_id = entry.get("id")
+        if not isinstance(provider_id, str):
+            continue
+        descriptor = _descriptor_by_id(provider_id)
+        if descriptor is None:
+            continue
+        for key in _secret_provider_field_keys(descriptor):
+            entry.pop(key, None)
+    return sanitized
+
+
+def merge_sensitive_provider_fields(
+    incoming: dict[str, Any],
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    merged = dict(incoming)
+    existing_map = provider_settings_map(existing or load_config())
+    providers = merged.get("providers")
+    if not isinstance(providers, list):
+        return merged
+    for entry in providers:
+        if not isinstance(entry, dict):
+            continue
+        provider_id = entry.get("id")
+        if not isinstance(provider_id, str):
+            continue
+        descriptor = _descriptor_by_id(provider_id)
+        if descriptor is None:
+            continue
+        source_existing = existing_map.get(provider_id, {})
+        for key in _secret_provider_field_keys(descriptor):
+            if key in entry:
+                continue
+            if key in source_existing:
+                entry[key] = source_existing[key]
+    return merged
+
+
+def config_contains_sensitive_fields(config: dict[str, Any]) -> bool:
+    for provider_id, entry in provider_settings_map(config).items():
+        for field in entry.keys():
+            if field in {"id", "enabled", "source"}:
+                continue
+            if is_sensitive_provider_field(provider_id, field):
+                return True
+    return False
+
+
+def _default_scalar_settings() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "refreshInterval": 60,
+        "pollingCacheSeconds": 10,
+        "overviewProviderIds": [],
+    }
 
 
 def coerce_bool(value: Any, default: bool) -> bool:
@@ -31,11 +135,10 @@ def coerce_bool(value: Any, default: bool) -> bool:
 
 
 def default_config() -> dict[str, Any]:
-    registry = ProviderRegistry()
+    registry = _provider_registry()
+    defaults = _default_scalar_settings()
     return {
-        "version": 1,
-        "refreshInterval": 60,
-        "overviewProviderIds": [],
+        **defaults,
         "providers": [
             {
                 "id": descriptor.id,
@@ -62,12 +165,8 @@ def _allowed_sources_for_descriptor(descriptor: ProviderDescriptor) -> set[str]:
 
 
 def _default_source_for_descriptor(descriptor: ProviderDescriptor) -> str:
-    if (
-        _supports_local_first_source(descriptor)
-        and str(descriptor.preferred_source_policy or "").strip().lower()
-        == "local_first"
-    ):
-        return "local_cli"
+    if "auto" in set(descriptor.source_modes or ()):
+        return "auto"
     return str(descriptor.source_modes[0])
 
 
@@ -77,6 +176,29 @@ def config_path() -> Path:
 
 def ensure_config_dir() -> None:
     config_path().parent.mkdir(parents=True, exist_ok=True)
+
+
+def _normalized_scalar_settings(
+    data: dict[str, Any] | None,
+    provider_ids: set[str],
+) -> dict[str, Any]:
+    normalized = dict(_default_scalar_settings())
+    if not isinstance(data, dict):
+        return normalized
+
+    refresh = data.get("refreshInterval")
+    if isinstance(refresh, int) and refresh > 0:
+        normalized["refreshInterval"] = refresh
+
+    polling_cache = data.get("pollingCacheSeconds")
+    if isinstance(polling_cache, int):
+        normalized["pollingCacheSeconds"] = max(0, min(60, polling_cache))
+
+    normalized["overviewProviderIds"] = _normalize_overview_provider_ids(
+        data.get("overviewProviderIds"),
+        provider_ids,
+    )
+    return normalized
 
 
 def _normalize_overview_provider_ids(
@@ -113,40 +235,32 @@ def _normalize_provider_entry(
 ) -> dict[str, Any]:
     entry_data: dict[str, Any] = dict(entry) if isinstance(entry, dict) else {}
     source = entry_data.get("source")
-    if descriptor.id == "opencode" and source == "web":
-        source = "auto"
+    if source == "remote":
+        source = "web"
     allowed_sources = _allowed_sources_for_descriptor(descriptor)
     if source not in allowed_sources:
         source = _default_source_for_descriptor(descriptor)
 
-    entry_data["id"] = descriptor.id
-    entry_data["enabled"] = coerce_bool(
+    normalized_entry: dict[str, Any] = {"id": descriptor.id}
+    normalized_entry["enabled"] = coerce_bool(
         entry_data.get("enabled"),
         descriptor.default_enabled,
     )
-    entry_data["source"] = source
-    return entry_data
+    normalized_entry["source"] = source
+    allowed_keys = _allowed_provider_field_keys(descriptor)
+    for key in allowed_keys:
+        if key in {"enabled", "source"}:
+            continue
+        if key in entry_data:
+            normalized_entry[key] = entry_data[key]
+    return normalized_entry
 
 
 def normalize_config(data: dict[str, Any] | None) -> dict[str, Any]:
-    registry = ProviderRegistry()
-    defaults = default_config()
+    registry = _provider_registry()
     provider_ids = set(registry.list_ids())
-    normalized: dict[str, Any] = {
-        "version": 1,
-        "refreshInterval": defaults["refreshInterval"],
-        "overviewProviderIds": [],
-        "providers": [],
-    }
-
-    if isinstance(data, dict):
-        refresh = data.get("refreshInterval")
-        if isinstance(refresh, int) and refresh > 0:
-            normalized["refreshInterval"] = refresh
-        normalized["overviewProviderIds"] = _normalize_overview_provider_ids(
-            data.get("overviewProviderIds"), provider_ids
-        )
-
+    normalized = _normalized_scalar_settings(data, provider_ids)
+    normalized["providers"] = []
     user_entries = _user_provider_entries(data)
 
     for descriptor in registry.list_descriptors():
@@ -180,10 +294,23 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(data: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ValueError("Config payload must be a JSON object.")
     normalized = normalize_config(data)
     ensure_config_dir()
     path = config_path()
-    path.write_text(json.dumps(normalized, indent=2) + "\n")
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=str(path.parent),
+            delete=False,
+        ) as handle:
+            handle.write(json.dumps(normalized, indent=2) + "\n")
+            tmp_path = Path(handle.name)
+        os.replace(tmp_path, path)
+    except OSError as exc:
+        raise ValueError(f"Failed to persist config: {exc}") from exc
     try:
         os.chmod(path, 0o600)
     except Exception:
@@ -199,19 +326,30 @@ def decode_base64_json(encoded: str) -> dict[str, Any]:
     return parsed
 
 
+def _provider_entry(
+    providers: list[Any],
+    provider_id: str,
+) -> dict[str, Any] | None:
+    for entry in providers:
+        if isinstance(entry, dict) and entry.get("id") == provider_id:
+            return entry
+    return None
+
+
 def update_provider_config(provider_id: str, field: str, value: Any) -> dict[str, Any]:
+    descriptor = _descriptor_by_id(provider_id)
+    if descriptor is None:
+        raise ValueError(f"Unknown provider id: {provider_id}")
+    allowed_fields = _allowed_provider_field_keys(descriptor)
+    if field not in allowed_fields:
+        raise ValueError(f"Unsupported provider field: {field}")
     config = load_config()
     providers = config.get("providers", [])
     if not isinstance(providers, list):
         providers = []
         config["providers"] = providers
 
-    target = None
-    for entry in providers:
-        if isinstance(entry, dict) and entry.get("id") == provider_id:
-            target = entry
-            break
-
+    target = _provider_entry(providers, provider_id)
     if target is None:
         target = {"id": provider_id}
         providers.append(target)

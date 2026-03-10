@@ -4,7 +4,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from core.ai_usage_monitor.providers.kilo import _cli_token, parse_kilo_snapshot
+from core.ai_usage_monitor.providers.kilo import (
+    _cli_token,
+    collect_kilo,
+    parse_kilo_snapshot,
+)
 
 
 class KiloProviderTests(unittest.TestCase):
@@ -56,6 +60,19 @@ class KiloProviderTests(unittest.TestCase):
         self.assertEqual(parsed["plan_name"], "Pro")
         self.assertEqual(parsed["pass_total"], 25.0)
         self.assertEqual(parsed["auto_top_up_method"], "visa")
+
+    def test_collect_kilo_returns_not_installed_when_no_credentials_exist(self):
+        with mock.patch(
+            "core.ai_usage_monitor.providers.kilo._api_key", return_value=None
+        ):
+            with mock.patch(
+                "core.ai_usage_monitor.providers.kilo._cli_token", return_value=None
+            ):
+                legacy, state = collect_kilo({"source": "auto"})
+
+        self.assertEqual(legacy, {"installed": False})
+        self.assertFalse(state.installed)
+        self.assertEqual(state.source, "auto")
 
 
 if __name__ == "__main__":

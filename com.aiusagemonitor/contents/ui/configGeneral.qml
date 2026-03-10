@@ -59,16 +59,13 @@ QQC2.ScrollView {
     function setProviderField(providerId, field, value) {
         stagedConfig = ConfigBackend.setProviderField(stagedConfig, providerId, field, value)
         sharedProviders = stagedConfig.providers || []
-        syncStagedPayload(); saveConfig()
+        syncStagedPayload()
     }
     function selectedOverviewIds() { return ConfigBackend.selectedOverviewIds(stagedConfig) }
     function isOverviewSelected(providerId) { return ConfigBackend.isOverviewSelected(stagedConfig, providerId) }
     function toggleOverviewProvider(providerId, enabled) {
         stagedConfig = ConfigBackend.toggleOverviewProvider(stagedConfig, providerId, enabled, 3)
-        syncStagedPayload(); saveConfig()
-    }
-    function saveConfig() {
-        runBackendCommand("python3 " + ConfigBackend.shellQuote(scriptPath) + " config-save-json " + ConfigBackend.shellQuote(cfg_sharedConfigPayload))
+        syncStagedPayload()
     }
 
     function providerForPanelModel() { return ConfigBackend.providerForPanelModel(descriptors) }

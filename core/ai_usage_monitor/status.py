@@ -2,14 +2,47 @@ from __future__ import annotations
 
 import json
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
+from core.ai_usage_monitor.runtime_cache import read_ttl_cache, write_ttl_cache
 
-def _read_json(url: str, timeout: int = 5) -> Any:
+
+_STATUS_CACHE_FILE = "status_cache.json"
+_STATUS_TTL_SECONDS = 300
+_STATUS_FAILURE_TTL_SECONDS = 60
+
+
+def _failure_cache_key(url: str) -> str:
+    return f"failure:{url}"
+
+
+def _read_json_uncached(url: str, timeout: int = 5) -> Any:
     req = urllib.request.Request(url, headers={"User-Agent": "ai-usage-monitor"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
+
+
+def _read_json(
+    url: str, timeout: int = 5, ttl_seconds: int = _STATUS_TTL_SECONDS
+) -> Any:
+    cached = read_ttl_cache(_STATUS_CACHE_FILE, url, ttl_seconds)
+    if cached is not None:
+        return cached
+    failed = read_ttl_cache(
+        _STATUS_CACHE_FILE,
+        _failure_cache_key(url),
+        _STATUS_FAILURE_TTL_SECONDS,
+    )
+    if failed is True:
+        raise RuntimeError("status fetch temporarily suppressed after recent failure")
+    try:
+        payload = _read_json_uncached(url, timeout=timeout)
+    except Exception:
+        write_ttl_cache(_STATUS_CACHE_FILE, _failure_cache_key(url), True)
+        raise
+    write_ttl_cache(_STATUS_CACHE_FILE, url, payload)
+    return payload
 
 
 def fetch_statuspage(base_url: str, public_url: str | None = None) -> dict | None:
@@ -17,9 +50,15 @@ def fetch_statuspage(base_url: str, public_url: str | None = None) -> dict | Non
         payload = _read_json(base_url.rstrip("/") + "/api/v2/status.json")
     except Exception:
         return None
+    if not isinstance(payload, dict):
+        return None
 
     status = payload.get("status") or {}
     page = payload.get("page") or {}
+    if not isinstance(status, dict):
+        status = {}
+    if not isinstance(page, dict):
+        page = {}
     return {
         "indicator": status.get("indicator") or "unknown",
         "description": status.get("description"),
@@ -77,19 +116,30 @@ def fetch_google_workspace_status(
         )
     except Exception:
         return None
+    if not isinstance(incidents, list):
+        return None
 
     active = []
     for incident in incidents:
+        if not isinstance(incident, dict):
+            continue
         current_products = (
             incident.get("currently_affected_products")
             or incident.get("currentlyAffectedProducts")
             or []
         )
+        if not isinstance(current_products, list):
+            current_products = []
         all_products = (
             incident.get("affected_products") or incident.get("affectedProducts") or []
         )
+        if not isinstance(all_products, list):
+            all_products = []
         products = current_products or all_products
-        if not any((product.get("id") == product_id) for product in products):
+        if not any(
+            isinstance(product, dict) and (product.get("id") == product_id)
+            for product in products
+        ):
             continue
         if incident.get("end"):
             continue
@@ -114,9 +164,12 @@ def fetch_google_workspace_status(
             or ""
         )
         try:
-            return datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except Exception:
-            return datetime.min
+            return datetime.min.replace(tzinfo=timezone.utc)
 
     best = sorted(active, key=sort_key, reverse=True)[0]
     update = best.get("most_recent_update") or best.get("mostRecentUpdate") or {}

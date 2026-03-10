@@ -4,7 +4,6 @@ import Gtk from 'gi://Gtk';
 
 import {createDropdownRow, createFieldRow} from './prefsCommonRows.js';
 import {
-    descriptorCapabilities,
     providerActiveSourceLabel,
     providerAvailabilityText,
     providerCapabilitiesText,
@@ -40,7 +39,9 @@ export function providerIconWidget(extensionPath, descriptor) {
 export function normalizedProviderSettings(descriptor, providerMap) {
     const stored = providerMap.get(descriptor.id) || {};
     const sourceModes = sourceModeOptions(descriptor);
-    const defaultSource = sourceModes.length > 0 ? sourceModes[0] : 'auto';
+    const defaultSource = sourceModes.includes('auto')
+        ? 'auto'
+        : (sourceModes.length > 0 ? sourceModes[0] : 'auto');
     return {
         ...stored,
         id: descriptor.id,
@@ -102,8 +103,15 @@ export function createProviderConfigExpander(extensionPath, descriptor, provider
     });
     enabledLabel.add_css_class('dim-label');
     enabledSwitch.connect('notify::active', widget => {
-        enabledLabel.set_label(widget.get_active() ? 'Enabled' : 'Disabled');
-        onSetField(descriptor.id, 'enabled', widget.get_active() ? 'true' : 'false');
+        const enabled = widget.get_active();
+        enabledLabel.set_label(enabled ? 'Enabled' : 'Disabled');
+        onSetField(descriptor.id, 'enabled', enabled ? 'true' : 'false');
+        if (enabled) {
+            expander.set_expanded(true);
+            return;
+        }
+        if (expander.get_expanded())
+            expander.set_expanded(false);
     });
     expander.add_suffix(enabledLabel);
     expander.add_suffix(enabledSwitch);
@@ -191,5 +199,3 @@ export function createProviderConfigExpander(extensionPath, descriptor, provider
 
     return expander;
 }
-
-export {descriptorCapabilities};

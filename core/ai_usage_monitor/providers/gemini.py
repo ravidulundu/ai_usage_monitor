@@ -21,12 +21,16 @@ DESCRIPTOR = ProviderDescriptor(
     id="gemini",
     display_name="Gemini CLI",
     short_name="Gemini",
+    source_modes=("auto", "oauth"),
     branding=ProviderBranding(
         icon_key="gemini", asset_name="gemini.svg", color="#AB87EA", badge_text="GM"
     ),
     status_page_url="https://status.cloud.google.com/",
     usage_dashboard_default_url="https://aistudio.google.com/",
-    usage_dashboard_by_source=(("api", "https://aistudio.google.com/"),),
+    usage_dashboard_by_source=(
+        ("oauth", "https://aistudio.google.com/"),
+        ("api", "https://aistudio.google.com/"),
+    ),
     preferred_source_policy="auto",
 )
 
@@ -34,6 +38,8 @@ _GEMINI_STATUS_PRODUCT_ID = "npdyhgECDJ6tB66MxXyo"
 _GEMINI_STATUS_HISTORY_URL = (
     "https://www.google.com/appsstatus/dashboard/products/npdyhgECDJ6tB66MxXyo/history"
 )
+_GEMINI_MAX_RETRIES = 3
+_GEMINI_SOURCE_ID = "oauth"
 
 
 def _gemini_account_identity(creds: dict[str, Any]) -> dict[str, str]:
@@ -293,7 +299,7 @@ def _gemini_success_response(
         display_name=DESCRIPTOR.display_name,
         installed=True,
         authenticated=True,
-        source="api",
+        source=_GEMINI_SOURCE_ID,
         primary_metric=MetricWindow(primary_label, used_pct, reset_time)
         if primary_bucket
         else None,
@@ -337,7 +343,7 @@ def _gemini_error_response(
         installed=True,
         authenticated=authenticated,
         status="error",
-        source="api",
+        source=_GEMINI_SOURCE_ID,
         error=str(legacy.get("error")) if legacy.get("error") is not None else None,
         extras=_identity_extras(identity, retry_count=retry_count),
         incident=_gemini_incident(),
@@ -345,75 +351,70 @@ def _gemini_error_response(
     return legacy, state
 
 
-def collect_gemini(
-    settings: dict[str, Any] | None = None,
+def _gemini_not_installed() -> tuple[dict[str, Any], ProviderState]:
+    return (
+        {"installed": False},
+        ProviderState(
+            id=DESCRIPTOR.id,
+            display_name=DESCRIPTOR.display_name,
+            installed=False,
+            source=_GEMINI_SOURCE_ID,
+        ),
+    )
+
+
+def _load_gemini_context(
+    creds_path: Path,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    creds = _load_gemini_creds(creds_path)
+    return creds, _gemini_account_identity(creds)
+
+
+def _collect_gemini_once(
+    creds: dict[str, Any],
+    identity: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, str], list[dict[str, Any]], str]:
+    token = str(creds["access_token"])
+    buckets, current_model = _fetch_gemini_buckets(token)
+    return creds, identity, buckets, current_model
+
+
+def _refresh_gemini_credentials(
+    creds_path: Path,
+    creds: dict[str, Any],
+) -> tuple[bool, dict[str, Any]]:
+    success, new_creds, refresh_error = refresh_gemini_token(creds_path, creds)
+    if success and new_creds is not None:
+        return True, new_creds
+    return False, {
+        "fail_reason": "auth_failed",
+        "error": refresh_error,
+        "http_code": 401,
+    }
+
+
+def _classify_gemini_http_error(
+    *,
+    err: urllib.error.HTTPError,
+    creds_path: Path,
+    creds: dict[str, Any],
+    retry_count: int,
+) -> tuple[bool, dict[str, Any]]:
+    body = read_http_error_body(err)
+    if (
+        err.code == 401
+        and retry_count < _GEMINI_MAX_RETRIES
+        and creds.get("refresh_token")
+    ):
+        return _refresh_gemini_credentials(creds_path, creds)
+    return False, classify_http_failure(
+        "gemini", err.code, body, context={"creds": creds}
+    )
+
+
+def _gemini_unknown_error_response(
+    retry_count: int,
 ) -> tuple[dict[str, Any], ProviderState]:
-    _ = settings
-    creds_path = _gemini_creds_path()
-    identity: dict[str, str] = {"account_id": "", "email": ""}
-    if not creds_path.exists():
-        return (
-            {"installed": False},
-            ProviderState(
-                id=DESCRIPTOR.id,
-                display_name=DESCRIPTOR.display_name,
-                installed=False,
-                source="api",
-            ),
-        )
-
-    creds: dict[str, Any] = {}
-    max_retries = 3
-    retry_count = 0
-    last_error: dict[str, Any] | None = None
-
-    while retry_count < max_retries:
-        try:
-            creds = _load_gemini_creds(creds_path)
-            identity = _gemini_account_identity(creds)
-            token = str(creds["access_token"])
-            buckets, current_model = _fetch_gemini_buckets(token)
-            return _gemini_success_response(identity, buckets, current_model)
-
-        except urllib.error.HTTPError as err:
-            retry_count += 1
-            body = read_http_error_body(err)
-            if (
-                err.code == 401
-                and retry_count < max_retries
-                and creds.get("refresh_token")
-            ):
-                success, new_creds, refresh_error = refresh_gemini_token(
-                    creds_path, creds
-                )
-                if success and new_creds is not None:
-                    creds = new_creds
-                    continue
-                last_error = {
-                    "fail_reason": "auth_failed",
-                    "error": refresh_error,
-                    "http_code": 401,
-                }
-                if retry_count >= max_retries:
-                    break
-                continue
-            last_error = classify_http_failure(
-                "gemini", err.code, body, context={"creds": creds}
-            )
-            break
-        except Exception as err:
-            retry_count += 1
-            last_error = classify_exception_failure(err)
-            if retry_count >= max_retries:
-                break
-
-    if last_error:
-        return _gemini_error_response(
-            last_error=last_error,
-            retry_count=retry_count,
-            identity=identity,
-        )
-
     legacy = {
         "installed": True,
         "authenticated": False,
@@ -426,8 +427,56 @@ def collect_gemini(
         installed=True,
         authenticated=False,
         status="error",
-        source="api",
+        source=_GEMINI_SOURCE_ID,
         error=str(legacy["error"]),
         incident=_gemini_incident(),
     )
     return legacy, state
+
+
+def collect_gemini(
+    settings: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], ProviderState]:
+    _ = settings
+    creds_path = _gemini_creds_path()
+    if not creds_path.exists():
+        return _gemini_not_installed()
+
+    identity: dict[str, str] = {"account_id": "", "email": ""}
+    creds: dict[str, Any] = {}
+    retry_count = 0
+    last_error: dict[str, Any] | None = None
+
+    while retry_count < _GEMINI_MAX_RETRIES:
+        try:
+            creds, identity = _load_gemini_context(creds_path)
+            creds, identity, buckets, current_model = _collect_gemini_once(
+                creds,
+                identity,
+            )
+            return _gemini_success_response(identity, buckets, current_model)
+        except urllib.error.HTTPError as err:
+            retry_count += 1
+            refreshed, error_payload = _classify_gemini_http_error(
+                err=err,
+                creds_path=creds_path,
+                creds=creds,
+                retry_count=retry_count,
+            )
+            if refreshed:
+                continue
+            last_error = error_payload
+            break
+        except Exception as err:
+            retry_count += 1
+            last_error = classify_exception_failure(err)
+            if retry_count >= _GEMINI_MAX_RETRIES:
+                break
+
+    if last_error:
+        return _gemini_error_response(
+            last_error=last_error,
+            retry_count=retry_count,
+            identity=identity,
+        )
+    return _gemini_unknown_error_response(retry_count)

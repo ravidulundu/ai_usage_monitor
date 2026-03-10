@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from core.ai_usage_monitor.identity_fingerprint import normalize
@@ -160,7 +162,11 @@ def load_identity_store() -> dict[str, Any]:
         return {"version": _IDENTITY_STATE_VERSION, "providers": {}}
     try:
         payload = json.loads(path.read_text())
-    except Exception:
+    except Exception as exc:
+        print(
+            f"[ai-usage-monitor] identity-store read failed: {type(exc).__name__}",
+            file=sys.stderr,
+        )
         return {"version": _IDENTITY_STATE_VERSION, "providers": {}}
     if not isinstance(payload, dict):
         return {"version": _IDENTITY_STATE_VERSION, "providers": {}}
@@ -179,6 +185,22 @@ def save_identity_store(store: dict[str, Any]) -> None:
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
-    except OSError:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=str(path.parent),
+            delete=False,
+        ) as handle:
+            handle.write(json.dumps(payload))
+            tmp_path = Path(handle.name)
+        os.replace(tmp_path, path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    except OSError as exc:
+        print(
+            f"[ai-usage-monitor] identity-store write failed: {type(exc).__name__}",
+            file=sys.stderr,
+        )
         return

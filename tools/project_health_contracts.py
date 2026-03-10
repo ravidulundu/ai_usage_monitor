@@ -30,6 +30,8 @@ GNOME_EXTENSION_JS_TARGETS = _discover_gnome_extension_js_targets()
 JS_SYNTAX_TARGETS = [
     *GNOME_EXTENSION_JS_TARGETS,
     "com.aiusagemonitor/contents/ui/ConfigPresentation.js",
+    "com.aiusagemonitor/contents/ui/ConfigBackend.js",
+    "com.aiusagemonitor/contents/ui/PopupVmSelection.js",
 ]
 
 GJS_LINT_TARGETS = [*GNOME_EXTENSION_JS_TARGETS]
@@ -128,6 +130,9 @@ LIFECYCLE_CONTRACT_RULES = {
                 "GLib.source_remove(this._identityRefreshTimeoutId);",
                 "_pruneIdentityCaches(providers);",
                 "if (this._destroyed || refreshGeneration !== this._refreshGeneration)",
+                "this._refresh(false);",
+                "this._refresh(true);",
+                "argv.push('--force');",
             ],
             "forbidden_tokens": [],
             "warn_tokens": [],
@@ -157,6 +162,9 @@ LIFECYCLE_CONTRACT_RULES = {
                 "identityRefreshTimer.stop()",
                 "root.disconnectRunnerSources()",
                 "onExpandedChanged:",
+                "root.refresh(false)",
+                "root.refresh(true)",
+                'command += " --force"',
             ],
             "forbidden_tokens": [],
             "warn_tokens": [
@@ -296,8 +304,13 @@ FORBIDDEN_MYPY_PATTERNS = (
 SETTINGS_PRESENTATION_CANONICAL_FIELDS = (
     "sourceModeLabel",
     "activeSourceLabel",
+    "preferredSourceLabel",
     "sourceStatusLabel",
     "fallbackLabel",
     "availabilityLabel",
+    "statusTags",
+    "sourceReasonLabel",
+    "strategyLabel",
+    "capabilitiesLabel",
     "subtitle",
 )

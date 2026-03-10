@@ -10,6 +10,8 @@ Item {
     PopupTokens { id: tokens }
     ActionDispatcher { id: actionDispatcher }
 
+    signal providerSelected(string providerId)
+
     implicitWidth: tokens.width
     implicitHeight: contentCol.implicitHeight + tokens.spacing.outerPadding + tokens.contentBottomPadding
     width: implicitWidth
@@ -51,8 +53,10 @@ Item {
 
     function selectProvider(requestedId) {
         var resolved = PopupVmSelection.resolveSelectedProviderId(tabsModel, popupData, requestedId)
-        if (resolved !== selectedProviderId)
+        if (resolved !== selectedProviderId) {
             selectedProviderId = resolved
+            providerSelected(resolved)
+        }
     }
 
     function syncSelectedProvider() {

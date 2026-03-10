@@ -74,19 +74,9 @@ def provider_error_state(
     return error_message, source_unavailable_text
 
 
-def metric_vm(
-    provider: ProviderState,
-    metric: MetricWindow | None,
-    kind: str,
-    default_label: str,
-    stale: bool,
-    provider_error: str | None,
-    rate_limits_missing: bool,
-    source_presentation: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    identity_refreshing = _provider_identity_refreshing(provider)
-    switching_state = _switching_state_vm(provider)
-    tone = metric_tone(stale=stale, provider_error=provider_error)
+def _metric_source_text(
+    source_presentation: dict[str, Any] | None,
+) -> tuple[str | None, str | None]:
     source_reason = (
         source_presentation.get("unavailableReason")
         if isinstance(source_presentation, dict)
@@ -100,57 +90,79 @@ def metric_vm(
         if isinstance(source_presentation, dict)
         else None
     )
+    return source_reason_text, source_hint_text
 
-    if identity_refreshing and not provider_error and metric is None:
+
+def _metric_loading_vm(
+    *,
+    kind: str,
+    default_label: str,
+    switching_state: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "label": default_label,
+        "percent": None,
+        "leftText": switching_state.get("title") or "Switching state",
+        "rightText": "…",
+        "secondaryText": switching_state.get("message") or "Refreshing usage",
+        "visible": True,
+        "available": False,
+        "stale": False,
+        "errorMessage": None,
+        "tone": "warn",
+    }
+
+
+def _metric_value_vm(
+    *,
+    kind: str,
+    default_label: str,
+    metric: MetricWindow,
+    stale: bool,
+    provider_error: str | None,
+    tone: str,
+) -> dict[str, Any]:
+    percent = metric_percent(metric)
+    secondary_text = metric_secondary_text(stale=stale, provider_error=provider_error)
+    if percent is not None:
         return {
             "kind": kind,
             "label": default_label,
-            "percent": None,
-            "leftText": switching_state.get("title") or "Switching state",
-            "rightText": "…",
-            "secondaryText": switching_state.get("message") or "Refreshing usage",
-            "visible": True,
-            "available": False,
-            "stale": False,
-            "errorMessage": None,
-            "tone": "warn",
-        }
-
-    if metric:
-        percent = metric_percent(metric)
-        secondary_text = metric_secondary_text(
-            stale=stale, provider_error=provider_error
-        )
-        if percent is not None:
-            return {
-                "kind": kind,
-                "label": default_label,
-                "percent": percent,
-                "leftText": f"{round(percent)}% used",
-                "rightText": humanize_reset(metric.reset_at),
-                "secondaryText": secondary_text,
-                "visible": True,
-                "available": True,
-                "stale": stale,
-                "errorMessage": error_summary(provider_error)
-                if provider_error
-                else None,
-                "tone": tone,
-            }
-        return {
-            "kind": kind,
-            "label": default_label,
-            "percent": None,
-            "leftText": "Unable to refresh" if provider_error else "Data unavailable",
-            "rightText": "—",
+            "percent": percent,
+            "leftText": f"{round(percent)}% used",
+            "rightText": humanize_reset(metric.reset_at),
             "secondaryText": secondary_text,
             "visible": True,
-            "available": False,
+            "available": True,
             "stale": stale,
             "errorMessage": error_summary(provider_error) if provider_error else None,
             "tone": tone,
         }
+    return {
+        "kind": kind,
+        "label": default_label,
+        "percent": None,
+        "leftText": "Unable to refresh" if provider_error else "Data unavailable",
+        "rightText": "—",
+        "secondaryText": secondary_text,
+        "visible": True,
+        "available": False,
+        "stale": stale,
+        "errorMessage": error_summary(provider_error) if provider_error else None,
+        "tone": tone,
+    }
 
+
+def _metric_unavailable_text(
+    *,
+    provider: ProviderState,
+    stale: bool,
+    provider_error: str | None,
+    rate_limits_missing: bool,
+    source_reason_text: str | None,
+    source_hint_text: str | None,
+) -> tuple[str, str | None]:
     if not provider.installed:
         left, secondary_text = (
             source_reason_text or "Provider unavailable",
@@ -170,6 +182,48 @@ def metric_vm(
 
     if stale and secondary_text and secondary_text != "Stale data":
         secondary_text = f"Stale data · {secondary_text}"
+    return left, secondary_text
+
+
+def metric_vm(
+    provider: ProviderState,
+    metric: MetricWindow | None,
+    kind: str,
+    default_label: str,
+    stale: bool,
+    provider_error: str | None,
+    rate_limits_missing: bool,
+    source_presentation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    identity_refreshing = _provider_identity_refreshing(provider)
+    switching_state = _switching_state_vm(provider)
+    tone = metric_tone(stale=stale, provider_error=provider_error)
+    source_reason_text, source_hint_text = _metric_source_text(source_presentation)
+
+    if identity_refreshing and not provider_error and metric is None:
+        return _metric_loading_vm(
+            kind=kind,
+            default_label=default_label,
+            switching_state=switching_state,
+        )
+
+    if metric:
+        return _metric_value_vm(
+            kind=kind,
+            default_label=default_label,
+            metric=metric,
+            stale=stale,
+            provider_error=provider_error,
+            tone=tone,
+        )
+    left, secondary_text = _metric_unavailable_text(
+        provider=provider,
+        stale=stale,
+        provider_error=provider_error,
+        rate_limits_missing=rate_limits_missing,
+        source_reason_text=source_reason_text,
+        source_hint_text=source_hint_text,
+    )
 
     return {
         "kind": kind,
@@ -198,10 +252,9 @@ def bucket_metrics_vm(
     if not isinstance(buckets, list):
         return []
 
+    visible_buckets = _visible_buckets_for_provider(provider, buckets)
     rows: list[dict[str, Any]] = []
-    for bucket in buckets:
-        if not isinstance(bucket, dict):
-            continue
+    for bucket in visible_buckets:
         used_pct_raw = bucket.get("used_pct")
         try:
             percent_value = float(used_pct_raw) if used_pct_raw is not None else None
@@ -241,6 +294,37 @@ def bucket_metrics_vm(
             }
         )
     return rows
+
+
+def _normalized_model_id(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    if value.startswith("models/"):
+        return value[len("models/") :]
+    return value
+
+
+def _visible_buckets_for_provider(
+    provider: ProviderState, buckets: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    if provider.id != "gemini":
+        return buckets
+    if not buckets:
+        return buckets
+
+    extras = provider.extras if isinstance(provider.extras, dict) else {}
+    candidate_models: list[str] = []
+    for key in ("model", "primaryModel"):
+        normalized = _normalized_model_id(extras.get(key))
+        if normalized and normalized not in candidate_models:
+            candidate_models.append(normalized)
+
+    if candidate_models:
+        for candidate in candidate_models:
+            for bucket in buckets:
+                if _normalized_model_id(bucket.get("model")) == candidate:
+                    return [bucket]
+
+    return [buckets[0]]
 
 
 def metric_rank(kind: str | None) -> int:

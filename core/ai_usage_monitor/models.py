@@ -24,6 +24,24 @@ class MetricWindow:
             "resetAt": self.reset_at,
         }
 
+    @classmethod
+    def from_dict(cls, payload: Any) -> MetricWindow | None:
+        if not isinstance(payload, dict):
+            return None
+        used_pct = payload.get("usedPct")
+        if used_pct is None:
+            return None
+        try:
+            coerced_pct = float(used_pct)
+        except (TypeError, ValueError):
+            return None
+        return cls(
+            label=str(payload.get("label") or ""),
+            used_pct=coerced_pct,
+            reset_at=payload.get("resetAt"),
+            kind=str(payload.get("kind") or "window"),
+        )
+
 
 @dataclass
 class LocalUsageSnapshot:
@@ -39,6 +57,17 @@ class LocalUsageSnapshot:
             "sessionCostUSD": self.session_cost_usd,
             "last30DaysCostUSD": self.last_30_days_cost_usd,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> LocalUsageSnapshot | None:
+        if not isinstance(payload, dict):
+            return None
+        return cls(
+            session_tokens=payload.get("sessionTokens"),
+            last_30_days_tokens=payload.get("last30DaysTokens"),
+            session_cost_usd=payload.get("sessionCostUSD"),
+            last_30_days_cost_usd=payload.get("last30DaysCostUSD"),
+        )
 
 
 @dataclass
@@ -81,6 +110,29 @@ class ProviderState:
             "error": self.error,
             "incident": self.incident,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> ProviderState:
+        data: dict[str, Any] = payload if isinstance(payload, dict) else {}
+        return cls(
+            id=str(data.get("id") or ""),
+            display_name=str(data.get("displayName") or data.get("id") or ""),
+            enabled=bool(data.get("enabled", True)),
+            installed=bool(data.get("installed", False)),
+            authenticated=bool(data.get("authenticated", True)),
+            status=str(data.get("status") or "ok"),
+            source=str(data.get("source") or "local"),
+            primary_metric=MetricWindow.from_dict(data.get("primaryMetric")),
+            secondary_metric=MetricWindow.from_dict(data.get("secondaryMetric")),
+            local_usage=LocalUsageSnapshot.from_dict(data.get("localUsage")),
+            source_model=dict(data.get("sourceModel") or {}),
+            metadata=dict(data.get("metadata") or {}),
+            extras=dict(data.get("extras") or {}),
+            error=str(data.get("error")) if data.get("error") is not None else None,
+            incident=dict(data.get("incident") or {})
+            if isinstance(data.get("incident"), dict)
+            else None,
+        )
 
 
 @dataclass
